@@ -13,6 +13,12 @@ This project is an AI-powered smart contract analysis system that detects risks 
 
 ## Setup & Running
 
+### Quick start (Windows)
+
+After creating `.env` (step 1 below), double-click `start.cmd` or run `.\start.ps1`. It builds the web interface if needed, starts the Yargı MCP server in the background (skipped if one already listens on its port), starts the API on `APP_PORT`, and opens the browser. Close the window or press Ctrl+C to stop; the MCP server it started stops too. MCP logs go to `logs/`. Requires `uv` (or `python -m uv`) and Node.js.
+
+The steps below do the same by hand.
+
 This project uses `uv` for dependency management and execution.
 
 ### 1. Environment Setup

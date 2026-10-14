@@ -12,3 +12,5 @@ wheels/
 .ipynb_checkpoints/
 node_modules/
 *.tsbuildinfo
+logs/
+frontend/dist/
