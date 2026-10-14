@@ -4,7 +4,7 @@ from langgraph.graph import END, StateGraph
 from .config import Settings, settings
 from .llm import ContractAnalyzer, _searchable, normalize_risk_findings
 from .models import ContractAnalysisState, ContractReport, RiskFinding, YargiDecision
-from .risk import calculate_risk_score, risk_level_for_score
+from .risk import SEVERITY_WEIGHTS, calculate_risk_score, risk_level_for_score
 from .yargi_client import YargiClient, YargiRateLimitError
 
 
@@ -113,7 +113,44 @@ RELEVANCE_TERMS_BY_CATEGORY = {
         "tahliye davası",
         "tahliye tarihi",
     ],
+    "cash_payment": [
+        "elden ödeme",
+        "elden ödendiği",
+        "banka kanalı",
+        "banka aracılığıyla",
+        "ödeme makbuzu",
+        "ödendiğinin ispatı",
+        "kira alacağı",
+        "kira bedelinin ödendiği",
+    ],
+    "unlawful_entry": [
+        "konut dokunulmazlığı",
+        "konuta girme",
+        "izinsiz giriş",
+        "kiracının rızası",
+        "kiralananı gezdirme",
+        "özel hayat",
+    ],
+    "liability": [
+        "sorumsuzluk",
+        "sorumluluğun sınırlandırılması",
+        "sorumluluktan kurtulma",
+        "sorumluluk kaydı",
+        "ağır kusur",
+        "hafif kusur",
+    ],
+    "dispute_resolution": [
+        "tahkim",
+        "tahkim şartı",
+        "hakem kararı",
+        "tahkim itirazı",
+        "istac",
+        "milletlerarası tahkim",
+    ],
 }
+# Contract risks are private law; criminal chambers only matter where the clause itself may amount to a crime.
+CRIMINAL_CHAMBER_MARKERS = ("ceza dairesi", "ceza genel kurulu", "ceza daireleri")
+CATEGORIES_ALLOWING_CRIMINAL_DECISIONS = {"unlawful_entry"}
 
 
 def is_relevant_decision(decision: YargiDecision) -> bool:
@@ -122,7 +159,12 @@ def is_relevant_decision(decision: YargiDecision) -> bool:
         return True
     terms = RELEVANCE_TERMS_BY_CATEGORY.get(category)
     if not terms:
-        return True
+        # Without terms we cannot judge relevance; showing nothing beats showing an unrelated decision.
+        return False
+    if category not in CATEGORIES_ALLOWING_CRIMINAL_DECISIONS and any(
+        marker in _searchable(decision.title) for marker in map(_searchable, CRIMINAL_CHAMBER_MARKERS)
+    ):
+        return False
     raw_haystack = " ".join(
         part
         for part in [decision.title, decision.excerpt]
@@ -216,11 +258,23 @@ async def analyze_contract(
         }
 
     async def build_legal_queries(state: ContractAnalysisState) -> dict:
+        # Precedent search is slow and rate limited, so only the most severe findings get one.
+        ranked = sorted(
+            state.findings,
+            key=lambda finding: SEVERITY_WEIGHTS[finding.severity] * finding.confidence,
+            reverse=True,
+        )
+        searched = ranked[: app_settings.yargi_max_findings]
         queries = {
             finding.id: await analyzer.build_legal_queries([finding])
-            for finding in state.findings
+            for finding in searched
         }
-        return {"legal_queries": queries}
+        limitations = list(state.limitations)
+        if len(searched) < len(ranked):
+            limitations.append(
+                f"Precedent search covered only the {len(searched)} most severe of {len(ranked)} findings."
+            )
+        return {"legal_queries": queries, "limitations": limitations}
 
     async def retrieve_yargi_decisions(state: ContractAnalysisState) -> dict:
         decisions_by_finding: dict[str, list[YargiDecision]] = {}

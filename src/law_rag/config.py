@@ -24,9 +24,10 @@ class Settings(BaseSettings):
         default=30.0,
         validation_alias="YARGI_REQUEST_TIMEOUT_SECONDS",
     )
+    yargi_max_findings: int = Field(default=4, validation_alias="YARGI_MAX_FINDINGS")
     yargi_max_concurrency: int = Field(default=1, validation_alias="YARGI_MAX_CONCURRENCY")
     yargi_total_timeout_seconds: float = Field(
-        default=60.0,
+        default=120.0,
         validation_alias="YARGI_TOTAL_TIMEOUT_SECONDS",
     )
     max_upload_bytes: int = Field(default=10 * 1024 * 1024, validation_alias="MAX_UPLOAD_BYTES")

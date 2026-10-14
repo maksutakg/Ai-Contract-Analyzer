@@ -282,3 +282,66 @@ async def test_rate_limited_search_is_reported() -> None:
     assert report.related_decisions == []
     assert RETRIEVAL_RATE_LIMITED_LIMITATION in report.limitations
 
+
+
+def relevance(category: str, title: str, excerpt: str) -> bool:
+    return is_relevant_decision(
+        YargiDecision(finding_category=category, source="test", title=title, relevance="q", excerpt=excerpt)
+    )
+
+
+def test_criminal_chamber_decisions_are_rejected_except_for_unlawful_entry() -> None:
+    cash_text = "Kira bedelinin elden ödendiği iddiası ve ödeme makbuzu incelenmiştir."
+    entry_text = "Kiracının rızası olmadan konuta girme konut dokunulmazlığını ihlal eder."
+
+    assert relevance("cash_payment", "3. Ceza Dairesi - E. 2021/1", cash_text) is False
+    assert relevance("cash_payment", "3. Hukuk Dairesi - E. 2021/1", cash_text) is True
+    assert relevance("unlawful_entry", "2. Ceza Dairesi - E. 2021/1", entry_text) is True
+
+
+def test_categories_without_terms_are_not_trusted() -> None:
+    assert relevance("general_risk", "3. Hukuk Dairesi", "Herhangi bir karar metni.") is False
+
+
+class ManyFindingsAnalyzer(AnalyzerWithGenericCategories):
+    async def classify_risks(self, clauses: list[Clause], contract_type: str | None = None) -> list[RiskFinding]:
+        severities = ["low", "critical", "medium", "high", "high", "low"]
+        return [
+            RiskFinding(
+                id=f"finding-{index}",
+                category="termination",
+                severity=severity,
+                explanation="Fesih riski.",
+                recommendation="Duzeltin.",
+                confidence=1.0,
+            )
+            for index, severity in enumerate(severities, start=1)
+        ]
+
+    async def build_legal_queries(self, findings: list[RiskFinding]) -> list[str]:
+        return [finding.id for finding in findings]
+
+
+class QueryRecordingYargiClient:
+    def __init__(self) -> None:
+        self.queries: list[str] = []
+
+    async def search(self, query: str, category: str | None = None) -> list[YargiDecision]:
+        self.queries.append(query)
+        return []
+
+
+@pytest.mark.asyncio
+async def test_precedent_search_covers_only_the_most_severe_findings() -> None:
+    yargi_client = QueryRecordingYargiClient()
+    report = await analyze_contract(
+        file_name="contract.docx",
+        file_type="docx",
+        raw_text="contract text",
+        analyzer=ManyFindingsAnalyzer(),
+        yargi_client=yargi_client,
+        app_settings=Settings(YARGI_MAX_FINDINGS=2),
+    )
+
+    assert yargi_client.queries == ["finding-2", "finding-4"]
+    assert "Precedent search covered only the 2 most severe of 6 findings." in report.limitations

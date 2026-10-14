@@ -579,15 +579,16 @@ class GeminiContractAnalyzer:
                 "or KVKK decisions on a legal database.\n\n"
                 "Follow these constraints:\n"
                 "1. The query must be in Turkish.\n"
-                "2. Use exact match double quotes for key legal concepts (e.g. \"cezai şart\", \"veri işleyen\").\n"
-                "3. Keep the query under 10 words.\n"
-                "4. Return ONLY the search query text, no explanation, no quotes around the whole query.\n\n"
+                "2. Return 2 or 3 key legal concepts, each wrapped in double quotes, separated by spaces "
+                "(e.g. \"cezai şart\" \"fahiş\" or \"veri işleyen\" \"veri güvenliği\").\n"
+                "3. Every concept must appear verbatim in relevant decisions, so prefer short standard legal terms.\n"
+                "4. Return ONLY the quoted concepts, no explanation.\n\n"
                 f"Risk Category: {finding.category}\n"
                 f"Explanation: {finding.explanation}\n"
                 f"Recommendation: {finding.recommendation}\n"
             )
             try:
-                query = (await self._generate(prompt)).strip().strip('"')
+                query = (await self._generate(prompt)).strip()
                 if query:
                     queries.append(query)
             except Exception:

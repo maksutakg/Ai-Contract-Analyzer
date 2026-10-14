@@ -191,3 +191,16 @@ def test_bedesten_phrases_make_terms_required_and_fall_back_to_first_phrase() ->
     ]
     assert _bedesten_phrases('+kira -tahliye OR "kira artışı"') == ['+kira -tahliye OR +"kira artışı"', '"kira artışı"']
     assert _bedesten_phrases("tahliye") == ["+tahliye"]
+
+
+def test_bedesten_phrases_drop_unbalanced_quotes() -> None:
+    assert _bedesten_phrases('konut dokunulmazlığı" "özel hayat') == ["+konut +dokunulmazlığı +özel +hayat"]
+
+
+@pytest.mark.asyncio
+async def test_rate_limited_document_fetch_is_not_silently_empty() -> None:
+    client = RawPayloadClient({"documentId": "1", "markdown_content": "ERROR (rate_limit_exceeded, HTTP 429): Retry-After: 0"})
+    decision = YargiDecision(source="Yargi MCP / Bedesten", title="karar", relevance="q", url="https://mevzuat.adalet.gov.tr/ictihat/1")
+
+    with pytest.raises(YargiRateLimitError):
+        await client.fetch_decision_text(decision)

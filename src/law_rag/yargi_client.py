@@ -15,6 +15,9 @@ _QUERY_TERM = re.compile(r'"[^"]+"|\S+')
 
 def _bedesten_phrases(query: str) -> list[str]:
     # Bedesten ORs bare terms, so every term is made required; the first quoted phrase alone is the fallback.
+    quoted = re.findall(r'"([^"]*)"', query)
+    if query.count('"') % 2 or any(not text.strip() or text != text.strip() for text in quoted):
+        query = query.replace('"', "")
     terms = _QUERY_TERM.findall(query)
     required = " ".join(
         term if term[0] in "+-" or term.upper() in {"AND", "OR", "NOT"} else f"+{term}"
@@ -387,6 +390,8 @@ class RemoteYargiMcpClient:
                 "get_bedesten_document_markdown",
                 {"documentId": document_id},
             )
+        except YargiRateLimitError:
+            raise
         except Exception:
             return None
         if isinstance(payload, dict):
@@ -445,6 +450,8 @@ class RemoteYargiMcpClient:
                 "get_kvkk_document_markdown",
                 {"decision_url": decision_url, "page_number": 1},
             )
+        except YargiRateLimitError:
+            raise
         except Exception:
             return None
         if isinstance(payload, dict):
@@ -467,6 +474,8 @@ class RemoteYargiMcpClient:
                 "get_emsal_document_markdown",
                 {"id": document_id},
             )
+        except YargiRateLimitError:
+            raise
         except Exception:
             return None
         if isinstance(payload, dict):
