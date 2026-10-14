@@ -65,6 +65,18 @@ It listens on `127.0.0.1` and the port set by `APP_PORT` (default `8000`; change
 
 `.env` is read only at startup, so restart the server after editing it.
 
+### 4. Web Interface
+
+Build the React interface once (requires Node.js); the FastAPI server then serves it at `http://localhost:<APP_PORT>/`:
+
+```bash
+cd frontend
+npm install
+npm run build
+```
+
+Restart the FastAPI server after the first build so it picks up `frontend/dist`. Rebuild after changing the frontend. For frontend development with hot reload, run `npm run dev` and set `API_TARGET=http://127.0.0.1:<APP_PORT>`; frontend tests run with `npm test`. Design notes are in `docs/ARCHITECTURE.md` and `docs/DECISIONS.md`.
+
 ---
 
 ## API Usage

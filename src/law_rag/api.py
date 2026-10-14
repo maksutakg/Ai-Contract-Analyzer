@@ -1,4 +1,7 @@
+from pathlib import Path
+
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.staticfiles import StaticFiles
 
 from .config import Settings
 from .document_loader import DocumentLoadError, load_contract_text
@@ -8,7 +11,10 @@ from .models import ContractReport, ContractType
 from .yargi_client import FakeYargiClient, RemoteYargiMcpClient
 
 
-def create_app(use_fake_clients: bool = False) -> FastAPI:
+FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+
+
+def create_app(use_fake_clients: bool = False, frontend_dist: Path = FRONTEND_DIST) -> FastAPI:
     app_settings = Settings()
     app = FastAPI(title="Law RAG MVP")
 
@@ -80,6 +86,10 @@ def create_app(use_fake_clients: bool = False) -> FastAPI:
         elif not app_settings.use_remote_yargi:
             report.yargi_source = "fake (USE_REMOTE_YARGI is false)"
         return report
+
+    # Mounted last so API routes win; serves the built UI from the same origin (no CORS).
+    if frontend_dist.is_dir():
+        app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
 
     return app
 
