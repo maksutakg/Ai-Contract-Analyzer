@@ -28,6 +28,8 @@ class YargiDecision(BaseModel):
     finding_id: str | None = None
     finding_category: str | None = None
     source: str
+    # Institution that issued the decision, e.g. "Yargıtay", "KVKK".
+    court: str | None = None
     title: str
     relevance: str
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)

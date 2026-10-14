@@ -71,8 +71,20 @@ code { font-family: inherit; font-weight: 600; }
 
 /* Upload */
 
-.upload { max-width: 40rem; display: grid; gap: 1.5rem; }
-.lede { font-family: var(--serif); font-size: 1.25rem; line-height: 1.55; }
+.upload { max-width: 40rem; margin: 0 auto; display: grid; gap: 1.5rem; }
+.lede { font-family: var(--serif); font-size: 1.125rem; line-height: 1.6; color: var(--ink-muted); max-width: 34rem; }
+
+.hero { display: grid; justify-items: center; gap: 1rem; text-align: center; padding: 0.5rem 0 1rem; }
+.statue { width: 11rem; height: auto; color: var(--ink); }
+.hero-title { font-family: var(--serif); font-weight: 600; font-size: 2rem; line-height: 1.2; letter-spacing: -0.015em; max-width: 30rem; }
+
+.sources { display: grid; justify-items: center; gap: 0.5rem; margin-top: 0.5rem; }
+.sources-label { font-size: 0.875rem; color: var(--ink-muted); }
+.sources-list { list-style: none; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; }
+.sources-list li {
+  color: var(--stamp); border: 1px solid var(--stamp); border-radius: 999px;
+  padding: 0.125rem 0.75rem; font-size: 0.875rem; font-weight: 600; background: var(--stamp-tint);
+}
 
 .dropzone {
   display: grid; place-content: center; gap: 0.5rem; text-align: center;
@@ -85,13 +97,14 @@ code { font-family: inherit; font-weight: 600; }
 .dropzone-title { font-family: var(--serif); font-size: 1.375rem; font-weight: 600; overflow-wrap: anywhere; }
 .dropzone-hint { color: var(--ink-muted); }
 
-.contract-type { border: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; }
-.contract-type legend { font-weight: 600; margin-bottom: 0.5rem; padding: 0; }
+.contract-type { border: 0; padding: 0; display: flex; justify-content: center; flex-wrap: wrap; gap: 0.5rem 1.5rem; }
+.contract-type legend { font-weight: 600; margin: 0 auto 0.5rem; padding: 0; }
 .choice { display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer; }
 .choice input { accent-color: var(--ink); width: 1.1rem; height: 1.1rem; }
 
-.upload .button-primary { justify-self: start; }
-.fineprint { color: var(--ink-muted); font-size: 0.875rem; }
+.upload .button-primary { justify-self: center; }
+.upload .alert { justify-self: center; text-align: left; }
+.fineprint { color: var(--ink-muted); font-size: 0.875rem; text-align: center; }
 
 /* Waiting */
 
@@ -135,6 +148,20 @@ code { font-family: inherit; font-weight: 600; }
 
 .summary-text { font-family: var(--serif); line-height: 1.65; max-width: 68ch; display: grid; gap: 0.75rem; }
 .summary-text ul { padding-left: 1.25rem; display: grid; gap: 0.5rem; }
+
+/* Seals: one round stamp per institution the precedents came from. */
+
+.seals { display: grid; gap: 1rem; }
+.seal-list { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 1rem; }
+.seal {
+  width: 7.5rem; height: 7.5rem; border-radius: 50%; display: grid; place-content: center; justify-items: center;
+  color: var(--stamp); border: 2px solid var(--stamp); box-shadow: inset 0 0 0 4px var(--sheet), inset 0 0 0 5px var(--stamp);
+  background: var(--sheet); text-align: center; padding: 0.75rem; transform: rotate(-4deg);
+}
+.seal:nth-child(even) { transform: rotate(3deg); }
+.seal-count { font-family: var(--serif); font-size: 2rem; font-weight: 600; line-height: 1; }
+.seal-name { font-size: 0.8125rem; font-weight: 600; line-height: 1.2; }
+.seals-note { font-size: 0.875rem; color: var(--ink-muted); max-width: 68ch; }
 
 /* The document with margin notes: the signature of the page. */
 

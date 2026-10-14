@@ -10,6 +10,13 @@ from .models import YargiDecision
 
 
 RATE_LIMIT_MAX_WAIT_SECONDS = 20.0
+BEDESTEN_COURTS = {
+    "YARGITAYKARARI": "Yargıtay",
+    "DANISTAYKARAR": "Danıştay",
+    "ISTINAFHUKUK": "Bölge Adliye Mahkemesi",
+    "YERELHUKUK": "Yerel mahkeme",
+    "KYB": "Kanun Yararına Bozma",
+}
 _QUERY_TERM = re.compile(r'"[^"]+"|\S+')
 
 
@@ -337,6 +344,7 @@ class RemoteYargiMcpClient:
             decisions.append(
                 YargiDecision(
                     source="Yargi MCP / Bedesten",
+                    court=self._bedesten_court(item),
                     title=title,
                     decision_date=self._decision_date(item),
                     decision_number=self._decision_number(item),
@@ -368,6 +376,7 @@ class RemoteYargiMcpClient:
             decisions.append(
                 YargiDecision(
                     source="Yargi MCP / KVKK",
+                    court="KVKK",
                     title=self._decision_title(item, fallback="KVKK karari"),
                     decision_date=self._decision_date(item),
                     decision_number=self._decision_number(item),
@@ -426,6 +435,7 @@ class RemoteYargiMcpClient:
             decisions.append(
                 YargiDecision(
                     source="Yargi MCP / Emsal",
+                    court="UYAP Emsal",
                     title=self._decision_title(item, fallback="Emsal karari"),
                     decision_date=self._decision_date(item),
                     decision_number=self._decision_number(item),
@@ -484,6 +494,11 @@ class RemoteYargiMcpClient:
         if isinstance(payload, str):
             return self._clean_document_text(payload)
         return None
+
+    def _bedesten_court(self, item: dict[str, Any]) -> str | None:
+        item_type = item.get("itemType")
+        name = item_type.get("name") if isinstance(item_type, dict) else item_type
+        return BEDESTEN_COURTS.get(str(name)) if name else None
 
     def _decision_title(self, item: dict[str, Any], fallback: str) -> str:
         direct_title = self._first_value(item, "title", "baslik", "daire", "birimAdi")

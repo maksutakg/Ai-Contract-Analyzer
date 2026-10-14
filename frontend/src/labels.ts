@@ -68,3 +68,14 @@ export function limitationLabel(text: string): string {
   }
   return text;
 }
+
+// Databases the backend actually queries through Yargı MCP (src/law_rag/yargi_client.py).
+export const SEARCHED_SOURCES = [
+  "Yargıtay",
+  "Danıştay",
+  "Bölge Adliye Mahkemesi",
+  "Yerel mahkeme",
+  "KVKK",
+  "UYAP Emsal",
+];
+

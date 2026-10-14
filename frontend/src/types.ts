@@ -22,6 +22,7 @@ export interface YargiDecision {
   finding_id: string | null;
   finding_category: string | null;
   source: string;
+  court: string | null;
   title: string;
   relevance: string;
   confidence: number;

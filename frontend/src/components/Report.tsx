@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 
-import { SEVERITY_LABEL, SEVERITY_ORDER, categoryLabel, limitationLabel } from "../labels";
+import { SEARCHED_SOURCES, SEVERITY_LABEL, SEVERITY_ORDER, categoryLabel, limitationLabel } from "../labels";
 import type { Clause, ContractReport, RiskFinding, Severity, YargiDecision } from "../types";
 
 const EXCERPT_PREVIEW_CHARS = 320;
@@ -70,6 +70,8 @@ export function Report({ fileName, report }: Props) {
       </aside>
 
       <div className="reading">
+        {!report.yargi_source.startsWith("fake") && <SourceSeals decisions={report.related_decisions} />}
+
         <section className="summary" aria-labelledby="summary-heading">
           <h2 id="summary-heading">Özet</h2>
           <SummaryText text={report.contract_summary} />
@@ -157,7 +159,7 @@ function Precedent({ decision }: { decision: YargiDecision }) {
   return (
     <figure className="precedent">
       <figcaption>
-        <span className="precedent-label">Dayanak karar</span>
+        <span className="precedent-label">{decision.court ? `Dayanak: ${decision.court} kararı` : "Dayanak karar"}</span>
         <span className="precedent-title">{decision.title}</span>
       </figcaption>
       {excerpt && <blockquote className="precedent-excerpt">{shown}</blockquote>}
@@ -174,6 +176,34 @@ function Precedent({ decision }: { decision: YargiDecision }) {
         )}
       </p>
     </figure>
+  );
+}
+
+function SourceSeals({ decisions }: { decisions: YargiDecision[] }) {
+  const counts = new Map<string, number>();
+  for (const decision of decisions) {
+    const court = decision.court ?? "Diğer";
+    counts.set(court, (counts.get(court) ?? 0) + 1);
+  }
+  return (
+    <section className="seals" aria-labelledby="seals-heading">
+      <h2 id="seals-heading">Bu rapordaki emsal kararlar</h2>
+      {counts.size > 0 ? (
+        <ul className="seal-list">
+          {[...counts].map(([court, count]) => (
+            <li key={court} className="seal">
+              <span className="seal-count">{count}</span>
+              <span className="seal-name">{court}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="muted">Bu analizde risklerle yeterince ilgili emsal karar bulunamadı.</p>
+      )}
+      <p className="seals-note">
+        Yargı MCP üzerinden canlı aranan kaynaklar: {SEARCHED_SOURCES.join(", ")}.
+      </p>
+    </section>
   );
 }
 

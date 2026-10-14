@@ -1,7 +1,9 @@
 import { useState, type DragEvent, type FormEvent } from "react";
 
 import { checkFile } from "../api";
+import { SEARCHED_SOURCES } from "../labels";
 import type { ContractType } from "../types";
+import { JusticeStatue } from "./JusticeStatue";
 
 const CONTRACT_TYPES: { value: ContractType | ""; label: string }[] = [
   { value: "", label: "Belirtmeyeceğim" },
@@ -40,10 +42,22 @@ export function UploadPanel({ error, onSubmit }: Props) {
 
   return (
     <form className="upload" onSubmit={submit}>
-      <p className="lede">
-        Sözleşmeyi yükleyin; her maddeyi risk açısından inceleyip ilgili Yargıtay, Danıştay ve
-        KVKK kararlarıyla birlikte gösterelim.
-      </p>
+      <div className="hero">
+        <JusticeStatue className="statue" />
+        <h2 className="hero-title">Sözleşmedeki riskleri emsal kararlarla birlikte görün</h2>
+        <p className="lede">
+          Her madde risk açısından incelenir; bulunan her risk için mahkeme ve kurul kararları
+          canlı olarak aranır ve gerekçesiyle maddenin yanına konur.
+        </p>
+        <div className="sources">
+          <p className="sources-label">Yargı MCP üzerinden aranan kaynaklar</p>
+          <ul className="sources-list">
+            {SEARCHED_SOURCES.map((source) => (
+              <li key={source}>{source}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
 
       <label
         className={`sheet dropzone${dragging ? " is-dragging" : ""}${file ? " has-file" : ""}`}

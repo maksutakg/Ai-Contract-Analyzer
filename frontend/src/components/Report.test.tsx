@@ -50,4 +50,13 @@ describe("Report", () => {
     const section = screen.getByRole("heading", { name: "Belirli bir maddeye bağlanamayan riskler" }).parentElement!;
     expect(within(section).getByText("Maddeye bağlanamayan risk")).toBeTruthy();
   });
+
+  it("names the issuing institution and stamps a seal per institution", () => {
+    render(<Report fileName="x.docx" report={report} />);
+
+    expect(screen.getAllByText("Dayanak: Yargıtay kararı")).toHaveLength(3);
+    const seals = screen.getByRole("heading", { name: "Bu rapordaki emsal kararlar" }).parentElement!;
+    expect(within(seals).getByText("Yargıtay").previousSibling?.textContent).toBe("3");
+    expect(within(seals).getByText("Yerel mahkeme").previousSibling?.textContent).toBe("1");
+  });
 });
