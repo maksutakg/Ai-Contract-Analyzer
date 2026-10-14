@@ -1,5 +1,9 @@
+import asyncio
+
+from law_rag.config import Settings
 from law_rag.graph import (
     NO_RELEVANT_DECISION_LIMITATION,
+    RETRIEVAL_TIMEOUT_LIMITATION,
     analyze_contract,
     select_related_decisions,
     is_relevant_decision,
@@ -144,3 +148,84 @@ def test_is_relevant_decision_is_character_insensitive() -> None:
         excerpt="kisisel verilerin korunmasi kanunu kapsamında veri sorumlusu yukumlulugu.",
     )
     assert is_relevant_decision(decision) is True
+
+
+class CountingAnalyzer(AnalyzerWithGenericCategories):
+    def __init__(self) -> None:
+        self.query_calls = 0
+
+    async def build_legal_queries(self, findings: list[RiskFinding]) -> list[str]:
+        self.query_calls += 1
+        return await super().build_legal_queries(findings)
+
+
+class TitleOnlyYargiClient:
+    def __init__(self) -> None:
+        self.fetched_titles: list[str] = []
+
+    async def search(self, query: str, category: str | None = None) -> list[YargiDecision]:
+        title = "Yazılım lisans" if category == "intellectual_property" else "Gecikme faizi temerrüt"
+        return [YargiDecision(source="test", title=title, relevance=query)]
+
+    async def fetch_decision_text(self, decision: YargiDecision) -> str | None:
+        self.fetched_titles.append(decision.title)
+        return "karar metni"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fetch_documents", [False, True])
+async def test_queries_built_once_per_finding_and_fetch_flag_respected(fetch_documents: bool) -> None:
+    analyzer = CountingAnalyzer()
+    yargi_client = TitleOnlyYargiClient()
+    report = await analyze_contract(
+        file_name="contract.docx",
+        file_type="docx",
+        raw_text="contract text",
+        analyzer=analyzer,
+        yargi_client=yargi_client,
+        app_settings=Settings(YARGI_FETCH_DOCUMENTS=fetch_documents),
+    )
+
+    assert analyzer.query_calls == len(report.findings) == 2
+    assert len(report.related_decisions) == 2
+    expected = ["Yazılım lisans", "Gecikme faizi temerrüt"] if fetch_documents else []
+    assert yargi_client.fetched_titles == expected
+
+
+class SlowYargiClient:
+    async def search(self, query: str, category: str | None = None) -> list[YargiDecision]:
+        if category == "intellectual_property":
+            await asyncio.sleep(5)
+        return [YargiDecision(source="test", title="Gecikme faizi temerrüt", relevance=query)]
+
+
+@pytest.mark.asyncio
+async def test_retrieval_keeps_partial_results_after_total_timeout() -> None:
+    report = await analyze_contract(
+        file_name="contract.docx",
+        file_type="docx",
+        raw_text="contract text",
+        analyzer=AnalyzerWithGenericCategories(),
+        yargi_client=SlowYargiClient(),
+        app_settings=Settings(YARGI_TOTAL_TIMEOUT_SECONDS=0.2),
+    )
+
+    assert [decision.title for decision in report.related_decisions] == ["Gecikme faizi temerrüt"]
+    assert RETRIEVAL_TIMEOUT_LIMITATION in report.limitations
+
+
+class AnalyzerWithLimitations(AnalyzerWithGenericCategories):
+    limitations = ["analyzer note"]
+
+
+@pytest.mark.asyncio
+async def test_analyzer_limitations_are_reported() -> None:
+    report = await analyze_contract(
+        file_name="contract.docx",
+        file_type="docx",
+        raw_text="contract text",
+        analyzer=AnalyzerWithLimitations(),
+        yargi_client=TitleOnlyYargiClient(),
+    )
+
+    assert "analyzer note" in report.limitations

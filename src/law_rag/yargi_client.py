@@ -1,3 +1,4 @@
+import asyncio
 import json
 import re
 from typing import Any, Protocol
@@ -44,6 +45,7 @@ class RemoteYargiMcpClient:
         self._initialized = False
         self._request_id = 0
         self._tools: set[str] = set()
+        self._init_lock = asyncio.Lock()
 
     async def search(self, query: str, category: str | None = None) -> list[YargiDecision]:
         async with httpx.AsyncClient(
@@ -130,26 +132,29 @@ class RemoteYargiMcpClient:
     async def _ensure_initialized(self, client: httpx.AsyncClient) -> None:
         if self._initialized:
             return
-
-        await self._rpc(
-            client,
-            "initialize",
-            {
-                "protocolVersion": "2025-06-18",
-                "capabilities": {},
-                "clientInfo": {"name": "law-rag", "version": "0.1.0"},
-            },
-        )
-        await self._notify(client, "notifications/initialized", {})
-        tools_result = await self._rpc(client, "tools/list", {})
-        self._tools = {
-            str(tool.get("name"))
-            for tool in tools_result.get("tools", [])
-            if isinstance(tool, dict) and tool.get("name")
-        }
-        if "search_bedesten_unified" not in self._tools:
-            raise YargiMcpError("Yargi MCP tool search_bedesten_unified is not available.")
-        self._initialized = True
+        # Parallel searches share this client; only the first one may run the MCP handshake.
+        async with self._init_lock:
+            if self._initialized:
+                return
+            await self._rpc(
+                client,
+                "initialize",
+                {
+                    "protocolVersion": "2025-06-18",
+                    "capabilities": {},
+                    "clientInfo": {"name": "law-rag", "version": "0.1.0"},
+                },
+            )
+            await self._notify(client, "notifications/initialized", {})
+            tools_result = await self._rpc(client, "tools/list", {})
+            self._tools = {
+                str(tool.get("name"))
+                for tool in tools_result.get("tools", [])
+                if isinstance(tool, dict) and tool.get("name")
+            }
+            if "search_bedesten_unified" not in self._tools:
+                raise YargiMcpError("Yargi MCP tool search_bedesten_unified is not available.")
+            self._initialized = True
 
     async def _call_tool(
         self,

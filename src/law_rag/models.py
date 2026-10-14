@@ -55,7 +55,7 @@ class ContractAnalysisState(BaseModel):
     contract_summary: str = ""
     clauses: list[Clause] = Field(default_factory=list)
     findings: list[RiskFinding] = Field(default_factory=list)
-    legal_queries: list[str] = Field(default_factory=list)
+    legal_queries: dict[str, list[str]] = Field(default_factory=dict)
     related_decisions: list[YargiDecision] = Field(default_factory=list)
     risk_score: int = 0
     risk_level: RiskLevel = "low"
