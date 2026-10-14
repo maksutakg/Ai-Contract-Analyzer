@@ -334,6 +334,7 @@ BATCH_TEXT_LIMIT = 8000
 GEMINI_CONCURRENCY = 3
 MAX_FINDINGS = 10
 SUMMARY_TRUNCATED_LIMITATION = "Contract is longer than the summary limit; the summary covers only the beginning."
+SUMMARY_FALLBACK_LIMITATION = "Gemini summary failed; a rule-based excerpt is shown instead."
 SEGMENT_FALLBACK_LIMITATION = "Gemini clause segmentation failed; line-based segmentation was used."
 RISK_FALLBACK_LIMITATION = "Gemini risk analysis failed for some clauses; rule-based analysis was used instead."
 QUERY_FALLBACK_LIMITATION = "Gemini query generation failed for some findings; template queries were used."
@@ -394,7 +395,10 @@ class GeminiContractAnalyzer:
         if not app_settings.gemini_api_key:
             raise ValueError("GEMINI_API_KEY is required for GeminiContractAnalyzer.")
         self._settings = app_settings
-        self._client = genai.Client(api_key=app_settings.gemini_api_key)
+        self._client = genai.Client(
+            api_key=app_settings.gemini_api_key,
+            http_options={"timeout": int(app_settings.gemini_timeout_seconds * 1000)},
+        )
         self._fallback = FakeContractAnalyzer()
         self.limitations: list[str] = []
 
@@ -403,15 +407,26 @@ class GeminiContractAnalyzer:
             self.limitations.append(limitation)
 
     async def _generate(self, prompt: str, json_schema: dict[str, Any] | None = None) -> str:
+        model = self._settings.gemini_model
+        fallback = self._settings.gemini_fallback_model
+        try:
+            return await self._generate_with(model, prompt, json_schema)
+        except Exception:
+            if not fallback or fallback == model:
+                raise
+        self._note(f"{model} was unavailable for some calls; {fallback} was used instead.")
+        return await self._generate_with(fallback, prompt, json_schema)
+
+    async def _generate_with(self, model: str, prompt: str, json_schema: dict[str, Any] | None) -> str:
         kwargs: dict[str, Any] = {}
         # shortcut: Gemma models are assumed not to support JSON schema output; verify before enabling for them.
-        if json_schema and self._settings.gemini_model.startswith("gemini"):
+        if json_schema and model.startswith("gemini"):
             kwargs["config"] = {
                 "response_mime_type": "application/json",
                 "response_json_schema": json_schema,
             }
         response = await self._client.aio.models.generate_content(
-            model=self._settings.gemini_model,
+            model=model,
             contents=prompt,
             **kwargs,
         )
@@ -431,7 +446,11 @@ class GeminiContractAnalyzer:
             self._note(SUMMARY_TRUNCATED_LIMITATION)
         prompt += text[:SUMMARY_TEXT_LIMIT]
 
-        return (await self._generate(prompt)).strip() or "Ozet uretilemedi."
+        try:
+            return (await self._generate(prompt)).strip() or "Ozet uretilemedi."
+        except Exception:
+            self._note(SUMMARY_FALLBACK_LIMITATION)
+            return await self._fallback.summarize_contract(text, contract_type)
 
     async def segment_clauses(self, text: str) -> list[Clause]:
         clauses = await self._fallback.segment_clauses(text)

@@ -5,12 +5,14 @@ import pytest
 from law_rag.llm import (
     MAX_FINDINGS,
     RISK_FALLBACK_LIMITATION,
+    SUMMARY_FALLBACK_LIMITATION,
     SUMMARY_TEXT_LIMIT,
     SUMMARY_TRUNCATED_LIMITATION,
     FakeContractAnalyzer,
     GeminiContractAnalyzer,
     normalize_risk_findings,
 )
+from law_rag.config import Settings
 from law_rag.models import Clause, RiskFinding
 
 
@@ -178,10 +180,10 @@ async def test_gemini_summary_prompt_is_compact(monkeypatch) -> None:
     capture = PromptCapture("Kisa ozet")
     monkeypatch.setattr(
         "law_rag.llm.genai.Client",
-        lambda api_key: FakeGeminiClient(capture),
+        lambda **kwargs: FakeGeminiClient(capture),
     )
     analyzer = GeminiContractAnalyzer(
-        type("Settings", (), {"gemini_api_key": "test", "gemini_model": "gemini-test"})()
+        gemini_settings("gemini-test")
     )
 
     await analyzer.summarize_contract("Madde\n" * 6000, contract_type="service")
@@ -198,10 +200,10 @@ async def test_gemini_risk_prompt_limits_findings_and_field_lengths(monkeypatch)
     capture = PromptCapture("[]")
     monkeypatch.setattr(
         "law_rag.llm.genai.Client",
-        lambda api_key: FakeGeminiClient(capture),
+        lambda **kwargs: FakeGeminiClient(capture),
     )
     analyzer = GeminiContractAnalyzer(
-        type("Settings", (), {"gemini_api_key": "test", "gemini_model": "gemini-test"})()
+        gemini_settings("gemini-test")
     )
     clauses = [
         Clause(id=f"clause-{index}", text="uzun madde metni " * 80)
@@ -222,10 +224,10 @@ async def test_gemini_build_legal_queries_sends_prompt(monkeypatch) -> None:
     capture = PromptCapture("optimized query")
     monkeypatch.setattr(
         "law_rag.llm.genai.Client",
-        lambda api_key: FakeGeminiClient(capture),
+        lambda **kwargs: FakeGeminiClient(capture),
     )
     analyzer = GeminiContractAnalyzer(
-        type("Settings", (), {"gemini_api_key": "test", "gemini_model": "gemini-test"})()
+        gemini_settings("gemini-test")
     )
     findings = [
         RiskFinding(
@@ -242,9 +244,15 @@ async def test_gemini_build_legal_queries_sends_prompt(monkeypatch) -> None:
     assert "optimized search query" in capture.contents[0]
 
 
-def gemini_analyzer(monkeypatch, capture: PromptCapture, model: str = "gemini-test") -> GeminiContractAnalyzer:
-    monkeypatch.setattr("law_rag.llm.genai.Client", lambda api_key: FakeGeminiClient(capture))
-    return GeminiContractAnalyzer(type("Settings", (), {"gemini_api_key": "test", "gemini_model": model})())
+def gemini_settings(model: str, fallback: str = "") -> Settings:
+    return Settings(GEMINI_API_KEY="test", GEMINI_MODEL=model, GEMINI_FALLBACK_MODEL=fallback)
+
+
+def gemini_analyzer(
+    monkeypatch, capture: PromptCapture, model: str = "gemini-test", fallback: str = ""
+) -> GeminiContractAnalyzer:
+    monkeypatch.setattr("law_rag.llm.genai.Client", lambda **kwargs: FakeGeminiClient(capture))
+    return GeminiContractAnalyzer(gemini_settings(model, fallback))
 
 
 @pytest.mark.asyncio
@@ -332,3 +340,39 @@ async def test_rule_findings_point_at_the_clause_that_contains_them() -> None:
         ("termination", "clause-2"),
         ("penalty_clause", "clause-3"),
     ]
+
+
+class FlakyCapture(PromptCapture):
+    def __init__(self, failing_model: str, text: str) -> None:
+        super().__init__(text)
+        self.failing_model = failing_model
+        self.models: list[str] = []
+
+    async def generate_content(self, *, model: str, contents: str, config: dict | None = None):
+        self.models.append(model)
+        if model == self.failing_model:
+            raise RuntimeError("503 UNAVAILABLE")
+        return await super().generate_content(model=model, contents=contents, config=config)
+
+
+@pytest.mark.asyncio
+async def test_unavailable_model_falls_back_to_second_model(monkeypatch) -> None:
+    capture = FlakyCapture("gemini-busy", "Kisa ozet")
+    analyzer = gemini_analyzer(monkeypatch, capture, model="gemini-busy", fallback="gemini-spare")
+
+    summary = await analyzer.summarize_contract("Sozlesme metni")
+
+    assert summary == "Kisa ozet"
+    assert capture.models == ["gemini-busy", "gemini-spare"]
+    assert analyzer.limitations == ["gemini-busy was unavailable for some calls; gemini-spare was used instead."]
+
+
+@pytest.mark.asyncio
+async def test_summary_failure_falls_back_to_rules(monkeypatch) -> None:
+    capture = FlakyCapture("gemini-busy", "unused")
+    analyzer = gemini_analyzer(monkeypatch, capture, model="gemini-busy")
+
+    summary = await analyzer.summarize_contract("Sozlesme metni", contract_type="service")
+
+    assert "MVP ozet" in summary
+    assert analyzer.limitations == [SUMMARY_FALLBACK_LIMITATION]

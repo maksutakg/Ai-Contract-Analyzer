@@ -7,6 +7,8 @@ class Settings(BaseSettings):
 
     gemini_api_key: str | None = Field(default=None, validation_alias="GEMINI_API_KEY")
     gemini_model: str = Field(default="gemini-3.8-flash", validation_alias="GEMINI_MODEL")
+    gemini_fallback_model: str = Field(default="gemini-3.5-flash-lite", validation_alias="GEMINI_FALLBACK_MODEL")
+    gemini_timeout_seconds: float = Field(default=60.0, validation_alias="GEMINI_TIMEOUT_SECONDS")
     yargi_mcp_url: str = Field(
         default="http://127.0.0.1:8001/mcp/",
         validation_alias="YARGI_MCP_URL",
