@@ -54,7 +54,6 @@ def canonicalize_risk_category(category: str) -> str:
         "cash": "cash_payment",
         "deposit": "deposit_forfeiture",
         "deposit forfeiture": "deposit_forfeiture",
-        "privacy": "unlawful_entry",
         "one sided rights": "unlawful_entry",
         "one sided right": "unlawful_entry",
         "unlawful entry": "unlawful_entry",
@@ -362,6 +361,7 @@ class GeminiContractAnalyzer:
             "Write the explanation and recommendation fields in Turkish. "
             "category must be one of cash_payment, deposit_forfeiture, termination, penalty_clause, "
             "unlawful_entry, eviction_undertaking, rent_increase, jurisdiction, data_protection, "
+            "intellectual_property, force_majeure, payment_interest, "
             "liability, dispute_resolution, general_risk. "
             "severity must be one of low, medium, high, critical. confidence must be 0..1. "
             "Do not invent law numbers, article numbers, court names, or case numbers. "

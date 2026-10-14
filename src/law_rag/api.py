@@ -58,6 +58,7 @@ def create_app(use_fake_clients: bool = False) -> FastAPI:
                 contract_type=contract_type,
                 analyzer=analyzer,
                 yargi_client=yargi_client,
+                app_settings=app_settings,
             )
         except Exception as exc:
             raise HTTPException(
