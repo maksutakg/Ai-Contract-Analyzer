@@ -2,13 +2,16 @@ import asyncio
 
 from law_rag.config import Settings
 from law_rag.graph import (
+    EXCERPT_LIMIT,
     NO_RELEVANT_DECISION_LIMITATION,
+    RETRIEVAL_RATE_LIMITED_LIMITATION,
     RETRIEVAL_TIMEOUT_LIMITATION,
     analyze_contract,
     select_related_decisions,
     is_relevant_decision,
 )
 from law_rag.models import Clause, RiskFinding, YargiDecision
+from law_rag.yargi_client import YargiRateLimitError
 import pytest
 
 
@@ -85,6 +88,7 @@ async def test_analyze_contract_normalizes_findings_and_prioritizes_decisions() 
         contract_type="service",
         analyzer=AnalyzerWithGenericCategories(),
         yargi_client=yargi_client,
+        app_settings=Settings(YARGI_FETCH_DOCUMENTS=False),
     )
 
     assert [finding.category for finding in report.findings] == [
@@ -229,3 +233,51 @@ async def test_analyzer_limitations_are_reported() -> None:
     )
 
     assert "analyzer note" in report.limitations
+
+
+class TextlessBedestenClient:
+    async def search(self, query: str, category: str | None = None) -> list[YargiDecision]:
+        if category == "intellectual_property":
+            return [YargiDecision(source="Bedesten", title="11. Hukuk Dairesi - E. 2024/1", relevance=query)]
+        return [YargiDecision(source="Bedesten", title="Ceza Genel Kurulu - E. 2026/625", relevance=query)]
+
+    async def fetch_decision_text(self, decision: YargiDecision) -> str | None:
+        if decision.title.startswith("11."):
+            return "Yazılım lisans sözleşmesi ve fikri mülkiyet hak devri. " + "x" * 3000
+        return "Sanığın hırsızlık suçundan cezalandırılmasına karar verilmiştir."
+
+
+@pytest.mark.asyncio
+async def test_textless_results_are_judged_on_fetched_text() -> None:
+    report = await analyze_contract(
+        file_name="contract.docx",
+        file_type="docx",
+        raw_text="contract text",
+        analyzer=AnalyzerWithGenericCategories(),
+        yargi_client=TextlessBedestenClient(),
+        app_settings=Settings(YARGI_FETCH_DOCUMENTS=True),
+    )
+
+    assert [decision.title for decision in report.related_decisions] == ["11. Hukuk Dairesi - E. 2024/1"]
+    assert report.related_decisions[0].excerpt.startswith("Yazılım lisans")
+    assert len(report.related_decisions[0].excerpt) == EXCERPT_LIMIT
+    assert NO_RELEVANT_DECISION_LIMITATION in report.limitations
+
+
+class RateLimitedYargiClient:
+    async def search(self, query: str, category: str | None = None) -> list[YargiDecision]:
+        raise YargiRateLimitError("rate limited")
+
+
+@pytest.mark.asyncio
+async def test_rate_limited_search_is_reported() -> None:
+    report = await analyze_contract(
+        file_name="contract.docx",
+        file_type="docx",
+        raw_text="contract text",
+        analyzer=AnalyzerWithGenericCategories(),
+        yargi_client=RateLimitedYargiClient(),
+    )
+
+    assert report.related_decisions == []
+    assert RETRIEVAL_RATE_LIMITED_LIMITATION in report.limitations

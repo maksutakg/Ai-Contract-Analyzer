@@ -4,9 +4,9 @@ from langgraph.graph import END, StateGraph
 
 from .config import Settings, settings
 from .llm import ContractAnalyzer, normalize_risk_findings
-from .models import ContractAnalysisState, ContractReport, YargiDecision
+from .models import ContractAnalysisState, ContractReport, RiskFinding, YargiDecision
 from .risk import calculate_risk_score, risk_level_for_score
-from .yargi_client import YargiClient
+from .yargi_client import YargiClient, YargiRateLimitError
 
 
 def _normalize_text(text: str) -> str:
@@ -18,7 +18,9 @@ MAX_RELATED_DECISIONS = 5
 MAX_RELATED_DECISIONS_PER_FINDING = 1
 MISSING_EXCERPT_LIMITATION = "Some Yargi MCP results had no excerpt and were deprioritized."
 NO_RELEVANT_DECISION_LIMITATION = "No sufficiently relevant Yargi MCP decision was found for some findings."
+EXCERPT_LIMIT = 1200
 RETRIEVAL_FAILED_LIMITATION = "Some Yargi MCP searches failed."
+RETRIEVAL_RATE_LIMITED_LIMITATION = "Yargi MCP rate limit was hit; some searches were skipped."
 RETRIEVAL_TIMEOUT_LIMITATION = "Yargi MCP searches exceeded the total time limit; partial results are shown."
 
 RELEVANCE_TERMS_BY_CATEGORY = {
@@ -168,28 +170,25 @@ def select_related_decisions(
     return selected, limitations
 
 
-async def hydrate_selected_decisions(
+async def hydrate_decisions(
     decisions: list[YargiDecision],
     yargi_client: YargiClient,
 ) -> None:
+    # Bedesten/Emsal search results carry no text, so relevance can only be judged after fetching it.
     fetch_decision_text = getattr(yargi_client, "fetch_decision_text", None)
     if fetch_decision_text is None:
+        return
+    # Only one decision per finding is reported, so stop fetching once one is relevant; fetches are rate limited.
+    if any(decision.excerpt and is_relevant_decision(decision) for decision in decisions):
         return
     for decision in decisions:
         if decision.excerpt:
             continue
         document_text = await fetch_decision_text(decision)
         if document_text:
-            decision.excerpt = document_text[:1200]
-
-
-def filter_hydrated_decisions(
-    decisions: list[YargiDecision],
-) -> tuple[list[YargiDecision], list[str]]:
-    relevant = [decision for decision in decisions if is_relevant_decision(decision)]
-    if len(relevant) == len(decisions):
-        return relevant, []
-    return relevant, [NO_RELEVANT_DECISION_LIMITATION]
+            decision.excerpt = document_text
+            if is_relevant_decision(decision):
+                return
 
 
 async def analyze_contract(
@@ -233,8 +232,18 @@ async def analyze_contract(
         decisions_by_finding: dict[str, list[YargiDecision]] = {}
         seen_decisions: set[str] = set()
         limitations = list(state.limitations)
+
+        async def search_and_hydrate(query: str, finding: RiskFinding) -> list[YargiDecision]:
+            decisions = await yargi_client.search(query, category=finding.category)
+            for decision in decisions:
+                decision.finding_id = finding.id
+                decision.finding_category = finding.category
+            if app_settings.yargi_fetch_documents:
+                await hydrate_decisions(decisions, yargi_client)
+            return decisions
+
         searches = [
-            (finding, asyncio.create_task(yargi_client.search(query, category=finding.category)))
+            (finding, asyncio.create_task(search_and_hydrate(query, finding)))
             for finding in state.findings
             for query in state.legal_queries.get(finding.id, [])
         ]
@@ -252,24 +261,27 @@ async def analyze_contract(
             if not task.done():
                 continue
             if task.exception() is not None:
-                if RETRIEVAL_FAILED_LIMITATION not in limitations:
-                    limitations.append(RETRIEVAL_FAILED_LIMITATION)
+                limitation = (
+                    RETRIEVAL_RATE_LIMITED_LIMITATION
+                    if isinstance(task.exception(), YargiRateLimitError)
+                    else RETRIEVAL_FAILED_LIMITATION
+                )
+                if limitation not in limitations:
+                    limitations.append(limitation)
                 continue
             for decision in task.result():
-                decision.finding_id = finding.id
-                decision.finding_category = finding.category
                 key = decision_key(decision)
                 if key in seen_decisions:
                     continue
                 seen_decisions.add(key)
                 decisions_by_finding.setdefault(finding.id, []).append(decision)
         decisions, selection_limitations = select_related_decisions(decisions_by_finding, app_settings)
-        if app_settings.yargi_fetch_documents:
-            await hydrate_selected_decisions(decisions, yargi_client)
-        decisions, hydration_limitations = filter_hydrated_decisions(decisions)
+        for decision in decisions:
+            if decision.excerpt:
+                decision.excerpt = decision.excerpt[:EXCERPT_LIMIT]
         limitations.extend(
             limitation
-            for limitation in [*selection_limitations, *hydration_limitations]
+            for limitation in selection_limitations
             if limitation not in limitations
         )
         return {"related_decisions": decisions, "limitations": limitations}

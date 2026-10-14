@@ -4,7 +4,8 @@ from typing import Any
 import httpx
 import pytest
 
-from law_rag.yargi_client import RemoteYargiMcpClient
+from law_rag.models import YargiDecision
+from law_rag.yargi_client import RemoteYargiMcpClient, YargiRateLimitError, _bedesten_phrases
 
 
 class RecordingYargiClient(RemoteYargiMcpClient):
@@ -132,3 +133,61 @@ async def test_parallel_searches_share_one_mcp_handshake() -> None:
     await asyncio.gather(*(client.search(f"sorgu {index}") for index in range(3)))
 
     assert client.initialize_calls == 1
+
+
+class RawPayloadClient(RemoteYargiMcpClient):
+    def __init__(self, payload: dict[str, Any]) -> None:
+        super().__init__()
+        self.payload = payload
+        self._tools = {"search_bedesten_unified", "get_kvkk_document_markdown"}
+        self._initialized = True
+
+    async def _rpc(self, client: httpx.AsyncClient, method: str, params: dict[str, Any]) -> dict[str, Any]:
+        return {"structuredContent": self.payload}
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_payload_raises_instead_of_looking_empty() -> None:
+    client = RawPayloadClient({"decisions": [], "error": "rate_limit_exceeded", "retry_after": "0"})
+
+    with pytest.raises(YargiRateLimitError):
+        await client.search('"cezai şart"', category="penalty_clause")
+
+
+class RateLimitedOnceClient(RawPayloadClient):
+    def __init__(self) -> None:
+        super().__init__({})
+        self.calls = 0
+
+    async def _rpc(self, client: httpx.AsyncClient, method: str, params: dict[str, Any]) -> dict[str, Any]:
+        self.calls += 1
+        if self.calls == 1:
+            text = "ERROR (rate_limit_exceeded, HTTP 429): bekleyin Retry-After: 0.01"
+            return {"structuredContent": {"documentId": "1", "markdown_content": text}}
+        return {"structuredContent": {"documentId": "1", "markdown_content": "Karar metni"}}
+
+
+@pytest.mark.asyncio
+async def test_rate_limited_document_is_retried_after_wait() -> None:
+    client = RateLimitedOnceClient()
+    decision = YargiDecision(source="Yargi MCP / Bedesten", title="karar", relevance="q", url="https://mevzuat.adalet.gov.tr/ictihat/1")
+
+    assert await client.fetch_decision_text(decision) == "Karar metni"
+    assert client.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_kvkk_document_text_is_read_from_markdown_chunk() -> None:
+    client = RawPayloadClient({"markdown_chunk": "KVKK karar metni", "current_page": 1})
+    decision = YargiDecision(source="Yargi MCP / KVKK", title="KVKK", relevance="q", url="https://www.kvkk.gov.tr/Icerik/1")
+
+    assert await client.fetch_decision_text(decision) == "KVKK karar metni"
+
+
+def test_bedesten_phrases_make_terms_required_and_fall_back_to_first_phrase() -> None:
+    assert _bedesten_phrases('"cezai şart" "Türk Borçlar Kanunu" indirim') == [
+        '+"cezai şart" +"Türk Borçlar Kanunu" +indirim',
+        '"cezai şart"',
+    ]
+    assert _bedesten_phrases('+kira -tahliye OR "kira artışı"') == ['+kira -tahliye OR +"kira artışı"', '"kira artışı"']
+    assert _bedesten_phrases("tahliye") == ["+tahliye"]

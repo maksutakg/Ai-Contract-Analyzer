@@ -28,17 +28,28 @@ Your `.env` file should be configured as follows:
 ```ini
 GEMINI_API_KEY=
 GEMINI_MODEL=gemini-3.8-flash
-YARGI_MCP_URL=https://yargimcp.surucu.dev/mcp
+YARGI_MCP_URL=http://127.0.0.1:8001/mcp/
 USE_REMOTE_YARGI=true
 YARGI_MAX_RESULTS_PER_FINDING=3
 YARGI_MAX_TOTAL_DECISIONS=10
-YARGI_FETCH_DOCUMENTS=false
+YARGI_FETCH_DOCUMENTS=true
 YARGI_REQUEST_TIMEOUT_SECONDS=30
 YARGI_TOTAL_TIMEOUT_SECONDS=60
+YARGI_MAX_CONCURRENCY=1
 MAX_UPLOAD_BYTES=10485760
 ```
 
-### 2. Start the Server
+### 2. Start the Yargı MCP Server
+
+The public hosted endpoint is not reliable, so run [yargi-mcp](https://pypi.org/project/yargi-mcp/) locally in its own isolated environment. Dependencies are pinned to the package's release date because newer `mcp` releases break it:
+
+```bash
+uv tool run --python 3.11 --exclude-newer 2026-07-15 --from "yargi-mcp[asgi]==0.2.2" uvicorn asgi_app:app --host 127.0.0.1 --port 8001
+```
+
+`YARGI_MCP_URL` must point to `http://127.0.0.1:8001/mcp/`.
+
+### 3. Start the Server
 
 To launch the FastAPI server, run:
 
