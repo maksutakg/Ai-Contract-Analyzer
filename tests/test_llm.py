@@ -307,3 +307,12 @@ async def test_gemini_segments_unheaded_contract_by_line_numbers(monkeypatch) ->
         ("Fesih", "Taraflar 30 gun once bildirir. Ihbar yazili yapilir."),
     ]
     assert analyzer.limitations == []
+
+
+@pytest.mark.asyncio
+async def test_rules_match_turkish_dotless_i() -> None:
+    clauses = [Clause(id="clause-1", text="Kiraya veren, kiracının izni olmaksızın daireye girebilir.")]
+
+    findings = await FakeContractAnalyzer().classify_risks(clauses, contract_type="lease")
+
+    assert [finding.category for finding in findings] == ["unlawful_entry"]

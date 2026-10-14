@@ -281,3 +281,4 @@ async def test_rate_limited_search_is_reported() -> None:
 
     assert report.related_decisions == []
     assert RETRIEVAL_RATE_LIMITED_LIMITATION in report.limitations
+

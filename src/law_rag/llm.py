@@ -30,7 +30,8 @@ class ContractAnalyzer(Protocol):
 
 
 def _searchable(text: str) -> str:
-    normalized = unicodedata.normalize("NFKD", text.casefold())
+    # Turkish dotless "ı" has no Unicode decomposition, so NFKD alone leaves it unmatched by "i".
+    normalized = unicodedata.normalize("NFKD", text.casefold().replace("ı", "i"))
     return "".join(char for char in normalized if not unicodedata.combining(char))
 
 

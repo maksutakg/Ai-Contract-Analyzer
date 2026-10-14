@@ -1,17 +1,11 @@
 import asyncio
-import unicodedata
 from langgraph.graph import END, StateGraph
 
 from .config import Settings, settings
-from .llm import ContractAnalyzer, normalize_risk_findings
+from .llm import ContractAnalyzer, _searchable, normalize_risk_findings
 from .models import ContractAnalysisState, ContractReport, RiskFinding, YargiDecision
 from .risk import calculate_risk_score, risk_level_for_score
 from .yargi_client import YargiClient, YargiRateLimitError
-
-
-def _normalize_text(text: str) -> str:
-    normalized = unicodedata.normalize("NFKD", text.casefold())
-    return "".join(char for char in normalized if not unicodedata.combining(char))
 
 
 MAX_RELATED_DECISIONS = 5
@@ -134,8 +128,8 @@ def is_relevant_decision(decision: YargiDecision) -> bool:
         for part in [decision.title, decision.excerpt]
         if part
     )
-    haystack = _normalize_text(raw_haystack)
-    matches = sum(1 for term in terms if _normalize_text(term) in haystack)
+    haystack = _searchable(raw_haystack)
+    matches = sum(1 for term in terms if _searchable(term) in haystack)
     return matches >= min(2, len(terms))
 
 
