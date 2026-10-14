@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 RiskLevel = Literal["low", "medium", "high", "critical"]
 Severity = Literal["low", "medium", "high", "critical"]
+ContractType = Literal["service", "lease"]
 
 
 class Clause(BaseModel):
@@ -45,6 +46,8 @@ class ContractReport(BaseModel):
     recommended_actions: list[str] = Field(default_factory=list)
     related_decisions: list[YargiDecision] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
+    llm_engine: str = "rules"
+    yargi_source: str = "fake"
 
 
 class ContractAnalysisState(BaseModel):

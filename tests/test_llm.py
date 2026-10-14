@@ -316,3 +316,19 @@ async def test_rules_match_turkish_dotless_i() -> None:
     findings = await FakeContractAnalyzer().classify_risks(clauses, contract_type="lease")
 
     assert [finding.category for finding in findings] == ["unlawful_entry"]
+
+
+@pytest.mark.asyncio
+async def test_rule_findings_point_at_the_clause_that_contains_them() -> None:
+    clauses = [
+        Clause(id="clause-1", text="Toplam bedel aylik taksitlerle odenir."),
+        Clause(id="clause-2", text="Is veren sozlesmeyi tek tarafli olarak derhal fesih hakkina sahiptir."),
+        Clause(id="clause-3", text="Gecikmede yuklenici cezai sart oder."),
+    ]
+
+    findings = await FakeContractAnalyzer().classify_risks(clauses, contract_type="service")
+
+    assert [(finding.category, finding.clause_id) for finding in findings] == [
+        ("termination", "clause-2"),
+        ("penalty_clause", "clause-3"),
+    ]

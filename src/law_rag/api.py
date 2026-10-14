@@ -4,7 +4,7 @@ from .config import Settings
 from .document_loader import DocumentLoadError, load_contract_text
 from .graph import analyze_contract
 from .llm import FakeContractAnalyzer, GeminiContractAnalyzer
-from .models import ContractReport
+from .models import ContractReport, ContractType
 from .yargi_client import FakeYargiClient, RemoteYargiMcpClient
 
 
@@ -19,7 +19,8 @@ def create_app(use_fake_clients: bool = False) -> FastAPI:
     @app.post("/api/v1/contracts/analyze", response_model=ContractReport)
     async def analyze_endpoint(
         file: UploadFile = File(...),
-        contract_type: str | None = Form(default=None),
+        # Not "ContractType | None": that becomes anyOf, which Swagger renders as a free-text box prefilled with "string".
+        contract_type: ContractType = Form(default=None),
     ):
         content = await file.read()
         if len(content) > app_settings.max_upload_bytes:
@@ -51,7 +52,7 @@ def create_app(use_fake_clients: bool = False) -> FastAPI:
         )
 
         try:
-            return await analyze_contract(
+            report = await analyze_contract(
                 file_name=file.filename or "contract",
                 file_type=file_type,
                 raw_text=text,
@@ -68,6 +69,17 @@ def create_app(use_fake_clients: bool = False) -> FastAPI:
                     "message": str(exc) or exc.__class__.__name__,
                 },
             ) from exc
+
+        # Say which backends actually ran, so a missing key or disabled MCP is visible in the report.
+        if isinstance(analyzer, GeminiContractAnalyzer):
+            report.llm_engine = app_settings.gemini_model
+        elif not app_settings.gemini_api_key:
+            report.llm_engine = "rules (GEMINI_API_KEY is not set)"
+        if isinstance(yargi_client, RemoteYargiMcpClient):
+            report.yargi_source = app_settings.yargi_mcp_url
+        elif not app_settings.use_remote_yargi:
+            report.yargi_source = "fake (USE_REMOTE_YARGI is false)"
+        return report
 
     return app
 

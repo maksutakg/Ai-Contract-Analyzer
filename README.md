@@ -80,6 +80,8 @@ curl -X POST "http://localhost:8000/api/v1/contracts/analyze" \
   -F "file=@contract.pdf"
 ```
 
+`contract_type` is optional; allowed values are `service` and `lease`.
+
 ---
 
 ## Output JSON Schema
@@ -100,6 +102,8 @@ The analysis report returns a JSON payload with the following fields:
 *   **`recommended_actions`** (array of strings): Quick action list for contract redlines.
 *   **`related_decisions`** (array): Precedent legal decisions matched on Yargı MCP (source, title, excerpt, and URL).
 *   **`limitations`** (array): Encountered technical limits or retrieval constraints.
+*   **`llm_engine`** (string): Gemini model that analyzed the contract, or `rules` with the reason when no API key is set.
+*   **`yargi_source`** (string): Yargı MCP URL that was queried, or `fake` with the reason when remote search is disabled.
 
 ---
 

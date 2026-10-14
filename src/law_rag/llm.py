@@ -195,10 +195,19 @@ class FakeContractAnalyzer:
                 )
             )
 
-        for index, clause in enumerate(clauses):
-            previous_text = clauses[index - 1].text if index > 0 else ""
-            next_text = clauses[index + 1].text if index + 1 < len(clauses) else ""
-            lowered = _searchable(" ".join([previous_text, clause.text, next_text]))
+        windows = [
+            " ".join(
+                [
+                    clauses[index - 1].text if index > 0 else "",
+                    clause.text,
+                    clauses[index + 1].text if index + 1 < len(clauses) else "",
+                ]
+            )
+            for index, clause in enumerate(clauses)
+        ]
+        # Own text first so a finding points at the clause that contains it; neighbours only add context for split lines.
+        for clause, text in [(clause, clause.text) for clause in clauses] + list(zip(clauses, windows)):
+            lowered = _searchable(text)
 
             if "elden" in lowered and ("odeme" in lowered or "kira bedeli" in lowered):
                 add(
