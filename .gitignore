@@ -11,3 +11,4 @@ wheels/
 .uv-cache/
 .ipynb_checkpoints/
 node_modules/
+*.tsbuildinfo
