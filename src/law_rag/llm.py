@@ -1,12 +1,14 @@
+import asyncio
 import json
 import re
 import unicodedata
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol, TypeVar
 
 from google import genai
 
 from .config import Settings, settings
 from .models import Clause, RiskFinding
+from .risk import SEVERITY_WEIGHTS
 
 
 class ContractAnalyzer(Protocol):
@@ -32,7 +34,7 @@ def _searchable(text: str) -> str:
     return "".join(char for char in normalized if not unicodedata.combining(char))
 
 
-def _json_array_from_text(text: str) -> list[dict[str, Any]]:
+def _json_array_from_text(text: str) -> list[Any]:
     cleaned = text.strip()
     fenced = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", cleaned, flags=re.DOTALL)
     if fenced:
@@ -42,8 +44,8 @@ def _json_array_from_text(text: str) -> list[dict[str, Any]]:
 
     payload = json.loads(cleaned)
     if not isinstance(payload, list):
-        raise ValueError("Gemini risk response must be a JSON array.")
-    return [item for item in payload if isinstance(item, dict)]
+        raise ValueError("Gemini response must be a JSON array.")
+    return payload
 
 
 def canonicalize_risk_category(category: str) -> str:
@@ -317,6 +319,66 @@ class FakeContractAnalyzer:
         return list(dict.fromkeys(queries))
 
 
+SUMMARY_TEXT_LIMIT = 30000
+BATCH_TEXT_LIMIT = 8000
+GEMINI_CONCURRENCY = 3
+MAX_FINDINGS = 10
+SUMMARY_TRUNCATED_LIMITATION = "Contract is longer than the summary limit; the summary covers only the beginning."
+SEGMENT_FALLBACK_LIMITATION = "Gemini clause segmentation failed; line-based segmentation was used."
+RISK_FALLBACK_LIMITATION = "Gemini risk analysis failed for some clauses; rule-based analysis was used instead."
+QUERY_FALLBACK_LIMITATION = "Gemini query generation failed for some findings; template queries were used."
+FINDINGS_CAPPED_LIMITATION = f"Only the {MAX_FINDINGS} most severe findings are reported."
+
+RISK_FINDINGS_SCHEMA = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "category": {"type": "string"},
+            "severity": {"type": "string", "enum": ["low", "medium", "high", "critical"]},
+            "explanation": {"type": "string"},
+            "recommendation": {"type": "string"},
+            "confidence": {"type": "number"},
+            "clause_id": {"type": "string"},
+        },
+        "required": ["category", "severity", "explanation", "recommendation", "confidence", "clause_id"],
+    },
+}
+CLAUSE_STARTS_SCHEMA = {"type": "array", "items": {"type": "integer"}}
+
+T = TypeVar("T")
+
+
+def _batches(items: list[T], limit: int, size: Callable[[T], int]) -> list[list[T]]:
+    batches: list[list[T]] = []
+    current: list[T] = []
+    current_size = 0
+    for item in items:
+        item_size = size(item) + 1
+        if current and current_size + item_size > limit:
+            batches.append(current)
+            current, current_size = [], 0
+        current.append(item)
+        current_size += item_size
+    if current:
+        batches.append(current)
+    return batches
+
+
+def _clause_line(clause: Clause) -> str:
+    return f"{clause.id}: {clause.text}"
+
+
+def _clauses_from_starts(lines: list[str], starts: list[int]) -> list[Clause]:
+    clauses: list[Clause] = []
+    for index, start in enumerate(starts):
+        end = starts[index + 1] if index + 1 < len(starts) else len(lines) + 1
+        title = lines[start - 1]
+        body = " ".join(lines[start : end - 1]).strip()
+        clauses.append(Clause(id=f"clause-{index + 1}", title=title, text=body or title))
+    return clauses
+
+
 class GeminiContractAnalyzer:
     def __init__(self, app_settings: Settings = settings) -> None:
         if not app_settings.gemini_api_key:
@@ -324,6 +386,26 @@ class GeminiContractAnalyzer:
         self._settings = app_settings
         self._client = genai.Client(api_key=app_settings.gemini_api_key)
         self._fallback = FakeContractAnalyzer()
+        self.limitations: list[str] = []
+
+    def _note(self, limitation: str) -> None:
+        if limitation not in self.limitations:
+            self.limitations.append(limitation)
+
+    async def _generate(self, prompt: str, json_schema: dict[str, Any] | None = None) -> str:
+        kwargs: dict[str, Any] = {}
+        # shortcut: Gemma models are assumed not to support JSON schema output; verify before enabling for them.
+        if json_schema and self._settings.gemini_model.startswith("gemini"):
+            kwargs["config"] = {
+                "response_mime_type": "application/json",
+                "response_json_schema": json_schema,
+            }
+        response = await self._client.aio.models.generate_content(
+            model=self._settings.gemini_model,
+            contents=prompt,
+            **kwargs,
+        )
+        return response.text or ""
 
     async def summarize_contract(self, text: str, contract_type: str | None = None) -> str:
         prompt = (
@@ -335,23 +417,93 @@ class GeminiContractAnalyzer:
         )
         if contract_type:
             prompt += f"Contract type: {contract_type}\n\n"
-        prompt += text[:6000]
+        if len(text) > SUMMARY_TEXT_LIMIT:
+            self._note(SUMMARY_TRUNCATED_LIMITATION)
+        prompt += text[:SUMMARY_TEXT_LIMIT]
 
-        response = await self._client.aio.models.generate_content(
-            model=self._settings.gemini_model,
-            contents=prompt,
-        )
-        return (response.text or "").strip() or "Ozet uretilemedi."
+        return (await self._generate(prompt)).strip() or "Ozet uretilemedi."
 
     async def segment_clauses(self, text: str) -> list[Clause]:
-        return await self._fallback.segment_clauses(text)
+        clauses = await self._fallback.segment_clauses(text)
+        if any(clause.title for clause in clauses):
+            return clauses
+
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        numbered = [f"{number}: {line}" for number, line in enumerate(lines, start=1)]
+        semaphore = asyncio.Semaphore(GEMINI_CONCURRENCY)
+
+        async def find_starts(batch: list[str]) -> list[int]:
+            prompt = (
+                "The following numbered lines are from a Turkish contract without article headings. "
+                "Return ONLY a JSON array of the line numbers where a new clause or section begins. "
+                "Do not return any other text.\n\n" + "\n".join(batch)
+            )
+            async with semaphore:
+                payload = _json_array_from_text(await self._generate(prompt, CLAUSE_STARTS_SCHEMA))
+            return [item for item in payload if isinstance(item, int)]
+
+        try:
+            results = await asyncio.gather(
+                *(find_starts(batch) for batch in _batches(numbered, BATCH_TEXT_LIMIT, len))
+            )
+        except Exception:
+            self._note(SEGMENT_FALLBACK_LIMITATION)
+            return clauses
+
+        starts = sorted({start for found in results for start in found if 1 <= start <= len(lines)})
+        if not starts:
+            self._note(SEGMENT_FALLBACK_LIMITATION)
+            return clauses
+        return _clauses_from_starts(lines, starts)
 
     async def classify_risks(
         self,
         clauses: list[Clause],
         contract_type: str | None = None,
     ) -> list[RiskFinding]:
-        clause_payload = "\n".join(f"{clause.id}: {clause.text}" for clause in clauses)
+        semaphore = asyncio.Semaphore(GEMINI_CONCURRENCY)
+        valid_clause_ids = {clause.id for clause in clauses}
+
+        async def classify_batch(batch: list[Clause]) -> list[RiskFinding]:
+            try:
+                async with semaphore:
+                    parsed = _json_array_from_text(
+                        await self._generate(self._risk_prompt(batch, contract_type), RISK_FINDINGS_SCHEMA)
+                    )
+                return [
+                    self._finding_from_item(item, valid_clause_ids)
+                    for item in parsed
+                    if isinstance(item, dict)
+                ]
+            except Exception:
+                self._note(RISK_FALLBACK_LIMITATION)
+                return await self._fallback.classify_risks(batch, contract_type)
+
+        results = await asyncio.gather(
+            *(
+                classify_batch(batch)
+                for batch in _batches(clauses, BATCH_TEXT_LIMIT, lambda clause: len(_clause_line(clause)))
+            )
+        )
+        findings = [finding for found in results for finding in found]
+        if not findings:
+            findings = await self._fallback.classify_risks(clauses, contract_type)
+
+        ranked = sorted(
+            findings,
+            key=lambda finding: SEVERITY_WEIGHTS[finding.severity] * finding.confidence,
+            reverse=True,
+        )
+        if len(ranked) > MAX_FINDINGS:
+            self._note(FINDINGS_CAPPED_LIMITATION)
+        return normalize_risk_findings(
+            [
+                finding.model_copy(update={"id": f"finding-{index}"})
+                for index, finding in enumerate(ranked[:MAX_FINDINGS], start=1)
+            ]
+        )
+
+    def _risk_prompt(self, clauses: list[Clause], contract_type: str | None) -> str:
         prompt = (
             "You are reviewing a Turkish contract for legal and procurement risk. "
             "Return ONLY a JSON array. Do not wrap it in markdown. Each item must have: "
@@ -372,37 +524,19 @@ class GeminiContractAnalyzer:
         )
         if contract_type:
             prompt += f"Contract type: {contract_type}\n\n"
-        prompt += f"Clauses:\n{clause_payload[:8000]}"
+        return prompt + "Clauses:\n" + "\n".join(_clause_line(clause) for clause in clauses)
 
-        try:
-            response = await self._client.aio.models.generate_content(
-                model=self._settings.gemini_model,
-                contents=prompt,
-            )
-            parsed = _json_array_from_text(response.text or "[]")
-            findings: list[RiskFinding] = []
-            valid_clause_ids = {clause.id for clause in clauses}
-            for item in parsed:
-                clause_id = item.get("clause_id")
-                if clause_id not in valid_clause_ids:
-                    clause_id = None
-                findings.append(
-                    RiskFinding(
-                        id=f"finding-{len(findings) + 1}",
-                        category=canonicalize_risk_category(str(item.get("category", "general_risk"))),
-                        severity=item.get("severity", "medium"),
-                        explanation=str(item.get("explanation", "Risk requires legal review.")),
-                        recommendation=str(item.get("recommendation", "Review and revise the clause.")),
-                        confidence=float(item.get("confidence", 0.7)),
-                        clause_id=clause_id,
-                    )
-                )
-            if findings:
-                return normalize_risk_findings(findings)
-        except Exception:
-            pass
-
-        return normalize_risk_findings(await self._fallback.classify_risks(clauses, contract_type))
+    def _finding_from_item(self, item: dict[str, Any], valid_clause_ids: set[str]) -> RiskFinding:
+        clause_id = item.get("clause_id")
+        return RiskFinding(
+            id="finding-0",
+            category=canonicalize_risk_category(str(item.get("category", "general_risk"))),
+            severity=item.get("severity", "medium"),
+            explanation=str(item.get("explanation", "Risk requires legal review.")),
+            recommendation=str(item.get("recommendation", "Review and revise the clause.")),
+            confidence=float(item.get("confidence", 0.7)),
+            clause_id=clause_id if clause_id in valid_clause_ids else None,
+        )
 
     async def build_legal_queries(self, findings: list[RiskFinding]) -> list[str]:
         if not findings:
@@ -424,14 +558,11 @@ class GeminiContractAnalyzer:
                 f"Recommendation: {finding.recommendation}\n"
             )
             try:
-                response = await self._client.aio.models.generate_content(
-                    model=self._settings.gemini_model,
-                    contents=prompt,
-                )
-                query = (response.text or "").strip().strip('"')
+                query = (await self._generate(prompt)).strip().strip('"')
                 if query:
                     queries.append(query)
             except Exception:
+                self._note(QUERY_FALLBACK_LIMITATION)
                 fallback_queries = await self._fallback.build_legal_queries([finding])
                 queries.extend(fallback_queries)
         return list(dict.fromkeys(queries))

@@ -1,6 +1,9 @@
+import asyncio
+
 from law_rag.config import Settings
 from law_rag.graph import (
     NO_RELEVANT_DECISION_LIMITATION,
+    RETRIEVAL_TIMEOUT_LIMITATION,
     analyze_contract,
     select_related_decisions,
     is_relevant_decision,
@@ -187,3 +190,42 @@ async def test_queries_built_once_per_finding_and_fetch_flag_respected(fetch_doc
     assert len(report.related_decisions) == 2
     expected = ["Yazılım lisans", "Gecikme faizi temerrüt"] if fetch_documents else []
     assert yargi_client.fetched_titles == expected
+
+
+class SlowYargiClient:
+    async def search(self, query: str, category: str | None = None) -> list[YargiDecision]:
+        if category == "intellectual_property":
+            await asyncio.sleep(5)
+        return [YargiDecision(source="test", title="Gecikme faizi temerrüt", relevance=query)]
+
+
+@pytest.mark.asyncio
+async def test_retrieval_keeps_partial_results_after_total_timeout() -> None:
+    report = await analyze_contract(
+        file_name="contract.docx",
+        file_type="docx",
+        raw_text="contract text",
+        analyzer=AnalyzerWithGenericCategories(),
+        yargi_client=SlowYargiClient(),
+        app_settings=Settings(YARGI_TOTAL_TIMEOUT_SECONDS=0.2),
+    )
+
+    assert [decision.title for decision in report.related_decisions] == ["Gecikme faizi temerrüt"]
+    assert RETRIEVAL_TIMEOUT_LIMITATION in report.limitations
+
+
+class AnalyzerWithLimitations(AnalyzerWithGenericCategories):
+    limitations = ["analyzer note"]
+
+
+@pytest.mark.asyncio
+async def test_analyzer_limitations_are_reported() -> None:
+    report = await analyze_contract(
+        file_name="contract.docx",
+        file_type="docx",
+        raw_text="contract text",
+        analyzer=AnalyzerWithLimitations(),
+        yargi_client=TitleOnlyYargiClient(),
+    )
+
+    assert "analyzer note" in report.limitations

@@ -1,3 +1,4 @@
+import asyncio
 import unicodedata
 from langgraph.graph import END, StateGraph
 
@@ -17,6 +18,8 @@ MAX_RELATED_DECISIONS = 5
 MAX_RELATED_DECISIONS_PER_FINDING = 1
 MISSING_EXCERPT_LIMITATION = "Some Yargi MCP results had no excerpt and were deprioritized."
 NO_RELEVANT_DECISION_LIMITATION = "No sufficiently relevant Yargi MCP decision was found for some findings."
+RETRIEVAL_FAILED_LIMITATION = "Some Yargi MCP searches failed."
+RETRIEVAL_TIMEOUT_LIMITATION = "Yargi MCP searches exceeded the total time limit; partial results are shown."
 
 RELEVANCE_TERMS_BY_CATEGORY = {
     "data_protection": [
@@ -230,20 +233,36 @@ async def analyze_contract(
         decisions_by_finding: dict[str, list[YargiDecision]] = {}
         seen_decisions: set[str] = set()
         limitations = list(state.limitations)
-        try:
-            for finding in state.findings:
-                for query in state.legal_queries.get(finding.id, []):
-                    found_decisions = await yargi_client.search(query, category=finding.category)
-                    for decision in found_decisions:
-                        decision.finding_id = finding.id
-                        decision.finding_category = finding.category
-                        key = decision_key(decision)
-                        if key in seen_decisions:
-                            continue
-                        seen_decisions.add(key)
-                        decisions_by_finding.setdefault(finding.id, []).append(decision)
-        except Exception:
-            limitations.append("Yargi MCP retrieval failed.")
+        searches = [
+            (finding, asyncio.create_task(yargi_client.search(query, category=finding.category)))
+            for finding in state.findings
+            for query in state.legal_queries.get(finding.id, [])
+        ]
+        if searches:
+            _, pending = await asyncio.wait(
+                [task for _, task in searches],
+                timeout=app_settings.yargi_total_timeout_seconds,
+            )
+            for task in pending:
+                task.cancel()
+            if pending:
+                limitations.append(RETRIEVAL_TIMEOUT_LIMITATION)
+        # Collect in submission order so dedupe and selection stay deterministic.
+        for finding, task in searches:
+            if not task.done():
+                continue
+            if task.exception() is not None:
+                if RETRIEVAL_FAILED_LIMITATION not in limitations:
+                    limitations.append(RETRIEVAL_FAILED_LIMITATION)
+                continue
+            for decision in task.result():
+                decision.finding_id = finding.id
+                decision.finding_category = finding.category
+                key = decision_key(decision)
+                if key in seen_decisions:
+                    continue
+                seen_decisions.add(key)
+                decisions_by_finding.setdefault(finding.id, []).append(decision)
         decisions, selection_limitations = select_related_decisions(decisions_by_finding, app_settings)
         if app_settings.yargi_fetch_documents:
             await hydrate_selected_decisions(decisions, yargi_client)
@@ -256,7 +275,13 @@ async def analyze_contract(
         return {"related_decisions": decisions, "limitations": limitations}
 
     async def compose_report(state: ContractAnalysisState) -> dict:
+        summary = await analyzer.summarize_contract(state.raw_text, state.contract_type)
         limitations = list(state.limitations)
+        limitations.extend(
+            limitation
+            for limitation in getattr(analyzer, "limitations", [])
+            if limitation not in limitations
+        )
         if not state.findings:
             limitations.append("No risk findings were detected by the MVP rules.")
 
@@ -265,7 +290,6 @@ async def analyze_contract(
             for finding in state.findings
         ]
 
-        summary = await analyzer.summarize_contract(state.raw_text, state.contract_type)
         report = ContractReport(
             contract_summary=summary,
             clauses=state.clauses,

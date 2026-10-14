@@ -1,6 +1,16 @@
+import json
+
 import pytest
 
-from law_rag.llm import FakeContractAnalyzer, GeminiContractAnalyzer, normalize_risk_findings
+from law_rag.llm import (
+    MAX_FINDINGS,
+    RISK_FALLBACK_LIMITATION,
+    SUMMARY_TEXT_LIMIT,
+    SUMMARY_TRUNCATED_LIMITATION,
+    FakeContractAnalyzer,
+    GeminiContractAnalyzer,
+    normalize_risk_findings,
+)
 from law_rag.models import Clause, RiskFinding
 
 
@@ -8,9 +18,11 @@ class PromptCapture:
     def __init__(self, text: str) -> None:
         self.text = text
         self.contents: list[str] = []
+        self.configs: list[dict | None] = []
 
-    async def generate_content(self, *, model: str, contents: str):
+    async def generate_content(self, *, model: str, contents: str, config: dict | None = None):
         self.contents.append(contents)
+        self.configs.append(config)
 
         class Response:
             text = self.text
@@ -172,10 +184,11 @@ async def test_gemini_summary_prompt_is_compact(monkeypatch) -> None:
         type("Settings", (), {"gemini_api_key": "test", "gemini_model": "gemini-test"})()
     )
 
-    await analyzer.summarize_contract("Madde\n" * 4000, contract_type="service")
+    await analyzer.summarize_contract("Madde\n" * 6000, contract_type="service")
 
     prompt = capture.contents[0]
-    assert len(prompt) < 7000
+    assert len(prompt) < SUMMARY_TEXT_LIMIT + 1000
+    assert SUMMARY_TRUNCATED_LIMITATION in analyzer.limitations
     assert "120-180 words" in prompt
     assert "Do not include risk analysis" in prompt
 
@@ -227,3 +240,70 @@ async def test_gemini_build_legal_queries_sends_prompt(monkeypatch) -> None:
     queries = await analyzer.build_legal_queries(findings)
     assert queries == ["optimized query"]
     assert "optimized search query" in capture.contents[0]
+
+
+def gemini_analyzer(monkeypatch, capture: PromptCapture, model: str = "gemini-test") -> GeminiContractAnalyzer:
+    monkeypatch.setattr("law_rag.llm.genai.Client", lambda api_key: FakeGeminiClient(capture))
+    return GeminiContractAnalyzer(type("Settings", (), {"gemini_api_key": "test", "gemini_model": model})())
+
+
+@pytest.mark.asyncio
+async def test_gemini_risk_analysis_batches_long_contracts_and_caps_findings(monkeypatch) -> None:
+    finding = {
+        "category": "termination",
+        "severity": "high",
+        "explanation": "Tek tarafli fesih.",
+        "recommendation": "Bildirim suresi ekleyin.",
+        "confidence": 0.9,
+        "clause_id": "clause-1",
+    }
+    capture = PromptCapture(json.dumps([finding] * 6))
+    analyzer = gemini_analyzer(monkeypatch, capture)
+    clauses = [Clause(id=f"clause-{index}", text="uzun madde metni " * 80) for index in range(1, 20)]
+
+    findings = await analyzer.classify_risks(clauses, contract_type="service")
+
+    assert len(capture.contents) > 1
+    assert "clause-19:" in capture.contents[-1]
+    assert len(findings) == MAX_FINDINGS
+    assert [finding.id for finding in findings] == [f"finding-{index}" for index in range(1, MAX_FINDINGS + 1)]
+    assert any("most severe findings" in limitation for limitation in analyzer.limitations)
+
+
+@pytest.mark.asyncio
+async def test_gemini_json_schema_is_sent_only_to_gemini_models(monkeypatch) -> None:
+    clauses = [Clause(id="clause-1", text="Cezai sart uygulanir.")]
+    gemini_capture = PromptCapture("[]")
+    await gemini_analyzer(monkeypatch, gemini_capture).classify_risks(clauses)
+    gemma_capture = PromptCapture("[]")
+    await gemini_analyzer(monkeypatch, gemma_capture, model="gemma-3-27b-it").classify_risks(clauses)
+
+    assert gemini_capture.configs[0]["response_mime_type"] == "application/json"
+    assert gemma_capture.configs[0] is None
+
+
+@pytest.mark.asyncio
+async def test_gemini_risk_failure_falls_back_and_is_reported(monkeypatch) -> None:
+    capture = PromptCapture("bu json degil")
+    analyzer = gemini_analyzer(monkeypatch, capture)
+
+    findings = await analyzer.classify_risks([Clause(id="clause-1", text="Cezai sart uygulanir.")])
+
+    assert [finding.category for finding in findings] == ["penalty_clause"]
+    assert analyzer.limitations == [RISK_FALLBACK_LIMITATION]
+
+
+@pytest.mark.asyncio
+async def test_gemini_segments_unheaded_contract_by_line_numbers(monkeypatch) -> None:
+    capture = PromptCapture("[1, 3, 99]")
+    analyzer = gemini_analyzer(monkeypatch, capture)
+    text = "Konu\nYazilim gelistirme hizmeti.\nFesih\nTaraflar 30 gun once bildirir.\nIhbar yazili yapilir."
+
+    clauses = await analyzer.segment_clauses(text)
+
+    assert "1: Konu" in capture.contents[0]
+    assert [(clause.title, clause.text) for clause in clauses] == [
+        ("Konu", "Yazilim gelistirme hizmeti."),
+        ("Fesih", "Taraflar 30 gun once bildirir. Ihbar yazili yapilir."),
+    ]
+    assert analyzer.limitations == []

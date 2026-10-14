@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any
 
 import httpx
@@ -104,3 +105,30 @@ async def test_fetch_decision_text_uses_decision_source() -> None:
 
     assert await client.fetch_decision_text(bedesten_decision) == "Bedesten karar metni"
     assert await client.fetch_decision_text(kvkk_decision) == "KVKK karar metni"
+
+
+class HandshakeCountingClient(RemoteYargiMcpClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.initialize_calls = 0
+
+    async def _rpc(self, client: httpx.AsyncClient, method: str, params: dict[str, Any]) -> dict[str, Any]:
+        if method == "initialize":
+            self.initialize_calls += 1
+        await asyncio.sleep(0.01)
+        return {"tools": [{"name": "search_bedesten_unified"}]}
+
+    async def _notify(self, client: httpx.AsyncClient, method: str, params: dict[str, Any]) -> None:
+        return None
+
+    async def _call_tool(self, client: httpx.AsyncClient, name: str, arguments: dict[str, Any]) -> Any:
+        return {"decisions": []}
+
+
+@pytest.mark.asyncio
+async def test_parallel_searches_share_one_mcp_handshake() -> None:
+    client = HandshakeCountingClient()
+
+    await asyncio.gather(*(client.search(f"sorgu {index}") for index in range(3)))
+
+    assert client.initialize_calls == 1
