@@ -27,7 +27,7 @@ Your `.env` file should be configured as follows:
 
 ```ini
 GEMINI_API_KEY=
-GEMINI_MODEL=gemma-3-27b-it
+GEMINI_MODEL=gemini-3.8-flash
 YARGI_MCP_URL=https://yargimcp.surucu.dev/mcp
 USE_REMOTE_YARGI=true
 YARGI_MAX_RESULTS_PER_FINDING=3

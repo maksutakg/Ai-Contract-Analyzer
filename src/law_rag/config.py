@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     gemini_api_key: str | None = Field(default=None, validation_alias="GEMINI_API_KEY")
-    gemini_model: str = Field(default="gemma-3-27b-it", validation_alias="GEMINI_MODEL")
+    gemini_model: str = Field(default="gemini-3.8-flash", validation_alias="GEMINI_MODEL")
     yargi_mcp_url: str = Field(
         default="https://yargimcp.surucu.dev/mcp/",
         validation_alias="YARGI_MCP_URL",
