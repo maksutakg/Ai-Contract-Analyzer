@@ -1,5 +1,7 @@
 # Contract CRAG MVP Design
 
+> **Historical document.** This describes the original MVP plan and is no longer kept in sync with the code. See `README.md` for current setup and behavior.
+
 Date: 2026-05-19
 
 ## Purpose

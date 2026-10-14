@@ -30,7 +30,8 @@ class ContractAnalyzer(Protocol):
 
 
 def _searchable(text: str) -> str:
-    normalized = unicodedata.normalize("NFKD", text.casefold())
+    # Turkish dotless "ı" has no Unicode decomposition, so NFKD alone leaves it unmatched by "i".
+    normalized = unicodedata.normalize("NFKD", text.casefold().replace("ı", "i"))
     return "".join(char for char in normalized if not unicodedata.combining(char))
 
 
@@ -194,10 +195,19 @@ class FakeContractAnalyzer:
                 )
             )
 
-        for index, clause in enumerate(clauses):
-            previous_text = clauses[index - 1].text if index > 0 else ""
-            next_text = clauses[index + 1].text if index + 1 < len(clauses) else ""
-            lowered = _searchable(" ".join([previous_text, clause.text, next_text]))
+        windows = [
+            " ".join(
+                [
+                    clauses[index - 1].text if index > 0 else "",
+                    clause.text,
+                    clauses[index + 1].text if index + 1 < len(clauses) else "",
+                ]
+            )
+            for index, clause in enumerate(clauses)
+        ]
+        # Own text first so a finding points at the clause that contains it; neighbours only add context for split lines.
+        for clause, text in [(clause, clause.text) for clause in clauses] + list(zip(clauses, windows)):
+            lowered = _searchable(text)
 
             if "elden" in lowered and ("odeme" in lowered or "kira bedeli" in lowered):
                 add(
@@ -324,6 +334,7 @@ BATCH_TEXT_LIMIT = 8000
 GEMINI_CONCURRENCY = 3
 MAX_FINDINGS = 10
 SUMMARY_TRUNCATED_LIMITATION = "Contract is longer than the summary limit; the summary covers only the beginning."
+SUMMARY_FALLBACK_LIMITATION = "Gemini summary failed; a rule-based excerpt is shown instead."
 SEGMENT_FALLBACK_LIMITATION = "Gemini clause segmentation failed; line-based segmentation was used."
 RISK_FALLBACK_LIMITATION = "Gemini risk analysis failed for some clauses; rule-based analysis was used instead."
 QUERY_FALLBACK_LIMITATION = "Gemini query generation failed for some findings; template queries were used."
@@ -384,7 +395,10 @@ class GeminiContractAnalyzer:
         if not app_settings.gemini_api_key:
             raise ValueError("GEMINI_API_KEY is required for GeminiContractAnalyzer.")
         self._settings = app_settings
-        self._client = genai.Client(api_key=app_settings.gemini_api_key)
+        self._client = genai.Client(
+            api_key=app_settings.gemini_api_key,
+            http_options={"timeout": int(app_settings.gemini_timeout_seconds * 1000)},
+        )
         self._fallback = FakeContractAnalyzer()
         self.limitations: list[str] = []
 
@@ -393,15 +407,26 @@ class GeminiContractAnalyzer:
             self.limitations.append(limitation)
 
     async def _generate(self, prompt: str, json_schema: dict[str, Any] | None = None) -> str:
+        model = self._settings.gemini_model
+        fallback = self._settings.gemini_fallback_model
+        try:
+            return await self._generate_with(model, prompt, json_schema)
+        except Exception:
+            if not fallback or fallback == model:
+                raise
+        self._note(f"{model} was unavailable for some calls; {fallback} was used instead.")
+        return await self._generate_with(fallback, prompt, json_schema)
+
+    async def _generate_with(self, model: str, prompt: str, json_schema: dict[str, Any] | None) -> str:
         kwargs: dict[str, Any] = {}
         # shortcut: Gemma models are assumed not to support JSON schema output; verify before enabling for them.
-        if json_schema and self._settings.gemini_model.startswith("gemini"):
+        if json_schema and model.startswith("gemini"):
             kwargs["config"] = {
                 "response_mime_type": "application/json",
                 "response_json_schema": json_schema,
             }
         response = await self._client.aio.models.generate_content(
-            model=self._settings.gemini_model,
+            model=model,
             contents=prompt,
             **kwargs,
         )
@@ -421,7 +446,11 @@ class GeminiContractAnalyzer:
             self._note(SUMMARY_TRUNCATED_LIMITATION)
         prompt += text[:SUMMARY_TEXT_LIMIT]
 
-        return (await self._generate(prompt)).strip() or "Ozet uretilemedi."
+        try:
+            return (await self._generate(prompt)).strip() or "Ozet uretilemedi."
+        except Exception:
+            self._note(SUMMARY_FALLBACK_LIMITATION)
+            return await self._fallback.summarize_contract(text, contract_type)
 
     async def segment_clauses(self, text: str) -> list[Clause]:
         clauses = await self._fallback.segment_clauses(text)
@@ -550,15 +579,16 @@ class GeminiContractAnalyzer:
                 "or KVKK decisions on a legal database.\n\n"
                 "Follow these constraints:\n"
                 "1. The query must be in Turkish.\n"
-                "2. Use exact match double quotes for key legal concepts (e.g. \"cezai şart\", \"veri işleyen\").\n"
-                "3. Keep the query under 10 words.\n"
-                "4. Return ONLY the search query text, no explanation, no quotes around the whole query.\n\n"
+                "2. Return 2 or 3 key legal concepts, each wrapped in double quotes, separated by spaces "
+                "(e.g. \"cezai şart\" \"fahiş\" or \"veri işleyen\" \"veri güvenliği\").\n"
+                "3. Every concept must appear verbatim in relevant decisions, so prefer short standard legal terms.\n"
+                "4. Return ONLY the quoted concepts, no explanation.\n\n"
                 f"Risk Category: {finding.category}\n"
                 f"Explanation: {finding.explanation}\n"
                 f"Recommendation: {finding.recommendation}\n"
             )
             try:
-                query = (await self._generate(prompt)).strip().strip('"')
+                query = (await self._generate(prompt)).strip()
                 if query:
                     queries.append(query)
             except Exception:

@@ -9,6 +9,24 @@ from .config import Settings, settings
 from .models import YargiDecision
 
 
+RATE_LIMIT_MAX_WAIT_SECONDS = 20.0
+_QUERY_TERM = re.compile(r'"[^"]+"|\S+')
+
+
+def _bedesten_phrases(query: str) -> list[str]:
+    # Bedesten ORs bare terms, so every term is made required; the first quoted phrase alone is the fallback.
+    quoted = re.findall(r'"([^"]*)"', query)
+    if query.count('"') % 2 or any(not text.strip() or text != text.strip() for text in quoted):
+        query = query.replace('"', "")
+    terms = _QUERY_TERM.findall(query)
+    required = " ".join(
+        term if term[0] in "+-" or term.upper() in {"AND", "OR", "NOT"} else f"+{term}"
+        for term in terms
+    )
+    first_phrase = [term for term in terms if term.startswith('"')][:1]
+    return list(dict.fromkeys([required, *first_phrase]))
+
+
 class YargiClient(Protocol):
     async def search(self, query: str, category: str | None = None) -> list[YargiDecision]:
         ...
@@ -18,6 +36,10 @@ class YargiClient(Protocol):
 
 
 class YargiMcpError(RuntimeError):
+    pass
+
+
+class YargiRateLimitError(YargiMcpError):
     pass
 
 
@@ -46,6 +68,7 @@ class RemoteYargiMcpClient:
         self._request_id = 0
         self._tools: set[str] = set()
         self._init_lock = asyncio.Lock()
+        self._call_semaphore = asyncio.Semaphore(app_settings.yargi_max_concurrency)
 
     async def search(self, query: str, category: str | None = None) -> list[YargiDecision]:
         async with httpx.AsyncClient(
@@ -64,21 +87,14 @@ class RemoteYargiMcpClient:
                 if decisions:
                     return decisions
 
-            decisions = await self._search_bedesten(
-                client,
-                query,
-                ["YARGITAYKARARI", "DANISTAYKARAR"],
-            )
-            if decisions:
-                return decisions
-
-            decisions = await self._search_bedesten(
-                client,
-                query,
-                ["YARGITAYKARARI", "DANISTAYKARAR", "ISTINAFHUKUK", "YERELHUKUK"],
-            )
-            if decisions:
-                return decisions
+            for phrase in _bedesten_phrases(query):
+                for court_types in (
+                    ["YARGITAYKARARI", "DANISTAYKARAR"],
+                    ["YARGITAYKARARI", "DANISTAYKARAR", "ISTINAFHUKUK", "YERELHUKUK"],
+                ):
+                    decisions = await self._search_bedesten(client, phrase, court_types)
+                    if decisions:
+                        return decisions
 
             if "search_emsal_detailed_decisions" in self._tools:
                 try:
@@ -162,14 +178,47 @@ class RemoteYargiMcpClient:
         name: str,
         arguments: dict[str, Any],
     ) -> Any:
-        result = await self._rpc(
-            client,
-            "tools/call",
-            {"name": name, "arguments": arguments},
-        )
+        payload = await self._call_tool_once(client, name, arguments)
+        retry_after = self._rate_limit_retry_after(payload)
+        if retry_after is not None and retry_after <= RATE_LIMIT_MAX_WAIT_SECONDS:
+            await asyncio.sleep(retry_after)
+            payload = await self._call_tool_once(client, name, arguments)
+            retry_after = self._rate_limit_retry_after(payload)
+        if retry_after is not None:
+            raise YargiRateLimitError(f"Yargi MCP rate limit from {name}: retry_after={retry_after}")
+        return payload
+
+    async def _call_tool_once(
+        self,
+        client: httpx.AsyncClient,
+        name: str,
+        arguments: dict[str, Any],
+    ) -> Any:
+        async with self._call_semaphore:
+            result = await self._rpc(
+                client,
+                "tools/call",
+                {"name": name, "arguments": arguments},
+            )
         if result.get("isError"):
             raise YargiMcpError(f"Yargi MCP tool error from {name}: {result}")
         return self._extract_tool_payload(result)
+
+    def _rate_limit_retry_after(self, payload: Any) -> float | None:
+        # The server reports throttling as a normal payload: an error field on searches, an ERROR text on documents.
+        if not isinstance(payload, dict):
+            return None
+        if payload.get("error") == "rate_limit_exceeded":
+            raw = str(payload.get("retry_after") or "")
+        elif str(payload.get("markdown_content") or "").startswith("ERROR (rate_limit_exceeded"):
+            match = re.search(r"Retry-After:\s*([\d.]+)", payload["markdown_content"])
+            raw = match.group(1) if match else ""
+        else:
+            return None
+        try:
+            return float(raw)
+        except ValueError:
+            return 1.0
 
     async def _rpc(
         self,
@@ -341,6 +390,8 @@ class RemoteYargiMcpClient:
                 "get_bedesten_document_markdown",
                 {"documentId": document_id},
             )
+        except YargiRateLimitError:
+            raise
         except Exception:
             return None
         if isinstance(payload, dict):
@@ -399,10 +450,12 @@ class RemoteYargiMcpClient:
                 "get_kvkk_document_markdown",
                 {"decision_url": decision_url, "page_number": 1},
             )
+        except YargiRateLimitError:
+            raise
         except Exception:
             return None
         if isinstance(payload, dict):
-            text = self._first_value(payload, "markdown_content", "content", "text")
+            text = self._first_value(payload, "markdown_chunk", "markdown_content", "content", "text")
             return self._clean_document_text(text)
         if isinstance(payload, str):
             return self._clean_document_text(payload)
@@ -421,6 +474,8 @@ class RemoteYargiMcpClient:
                 "get_emsal_document_markdown",
                 {"id": document_id},
             )
+        except YargiRateLimitError:
+            raise
         except Exception:
             return None
         if isinstance(payload, dict):
@@ -449,7 +504,7 @@ class RemoteYargiMcpClient:
         return self._first_value(item, "decision_number", "kararNo", "karar_no")
 
     def _decision_date(self, item: dict[str, Any]) -> str | None:
-        raw_date = self._first_value(item, "kararTarihiStr", "kararTarihi", "decision_date")
+        raw_date = self._first_value(item, "kararTarihiStr", "kararTarihi", "decision_date", "publication_date")
         if not raw_date:
             return None
         match = re.search(r"(\d{1,2})[./-](\d{1,2})[./-](\d{4})", raw_date)

@@ -2,13 +2,17 @@ import asyncio
 
 from law_rag.config import Settings
 from law_rag.graph import (
+    EXCERPT_LIMIT,
     NO_RELEVANT_DECISION_LIMITATION,
+    RETRIEVAL_RATE_LIMITED_LIMITATION,
     RETRIEVAL_TIMEOUT_LIMITATION,
     analyze_contract,
     select_related_decisions,
     is_relevant_decision,
+    relevant_passage,
 )
 from law_rag.models import Clause, RiskFinding, YargiDecision
+from law_rag.yargi_client import YargiRateLimitError
 import pytest
 
 
@@ -85,6 +89,7 @@ async def test_analyze_contract_normalizes_findings_and_prioritizes_decisions() 
         contract_type="service",
         analyzer=AnalyzerWithGenericCategories(),
         yargi_client=yargi_client,
+        app_settings=Settings(YARGI_FETCH_DOCUMENTS=False),
     )
 
     assert [finding.category for finding in report.findings] == [
@@ -229,3 +234,128 @@ async def test_analyzer_limitations_are_reported() -> None:
     )
 
     assert "analyzer note" in report.limitations
+
+
+class TextlessBedestenClient:
+    async def search(self, query: str, category: str | None = None) -> list[YargiDecision]:
+        if category == "intellectual_property":
+            return [YargiDecision(source="Bedesten", title="11. Hukuk Dairesi - E. 2024/1", relevance=query)]
+        return [YargiDecision(source="Bedesten", title="Ceza Genel Kurulu - E. 2026/625", relevance=query)]
+
+    async def fetch_decision_text(self, decision: YargiDecision) -> str | None:
+        if decision.title.startswith("11."):
+            return "Yazılım lisans sözleşmesi ve fikri mülkiyet hak devri. " + "x" * 3000
+        return "Sanığın hırsızlık suçundan cezalandırılmasına karar verilmiştir."
+
+
+@pytest.mark.asyncio
+async def test_textless_results_are_judged_on_fetched_text() -> None:
+    report = await analyze_contract(
+        file_name="contract.docx",
+        file_type="docx",
+        raw_text="contract text",
+        analyzer=AnalyzerWithGenericCategories(),
+        yargi_client=TextlessBedestenClient(),
+        app_settings=Settings(YARGI_FETCH_DOCUMENTS=True),
+    )
+
+    assert [decision.title for decision in report.related_decisions] == ["11. Hukuk Dairesi - E. 2024/1"]
+    assert report.related_decisions[0].excerpt.startswith("Yazılım lisans")
+    assert len(report.related_decisions[0].excerpt) == EXCERPT_LIMIT
+    assert NO_RELEVANT_DECISION_LIMITATION in report.limitations
+
+
+class RateLimitedYargiClient:
+    async def search(self, query: str, category: str | None = None) -> list[YargiDecision]:
+        raise YargiRateLimitError("rate limited")
+
+
+@pytest.mark.asyncio
+async def test_rate_limited_search_is_reported() -> None:
+    report = await analyze_contract(
+        file_name="contract.docx",
+        file_type="docx",
+        raw_text="contract text",
+        analyzer=AnalyzerWithGenericCategories(),
+        yargi_client=RateLimitedYargiClient(),
+    )
+
+    assert report.related_decisions == []
+    assert RETRIEVAL_RATE_LIMITED_LIMITATION in report.limitations
+
+
+
+def relevance(category: str, title: str, excerpt: str) -> bool:
+    return is_relevant_decision(
+        YargiDecision(finding_category=category, source="test", title=title, relevance="q", excerpt=excerpt)
+    )
+
+
+def test_criminal_chamber_decisions_are_rejected_except_for_unlawful_entry() -> None:
+    cash_text = "Kira bedelinin elden ödendiği iddiası ve ödeme makbuzu incelenmiştir."
+    entry_text = "Kiracının rızası olmadan konuta girme konut dokunulmazlığını ihlal eder."
+
+    assert relevance("cash_payment", "3. Ceza Dairesi - E. 2021/1", cash_text) is False
+    assert relevance("cash_payment", "3. Hukuk Dairesi - E. 2021/1", cash_text) is True
+    assert relevance("unlawful_entry", "2. Ceza Dairesi - E. 2021/1", entry_text) is True
+
+
+def test_categories_without_terms_are_not_trusted() -> None:
+    assert relevance("general_risk", "3. Hukuk Dairesi", "Herhangi bir karar metni.") is False
+
+
+class ManyFindingsAnalyzer(AnalyzerWithGenericCategories):
+    async def classify_risks(self, clauses: list[Clause], contract_type: str | None = None) -> list[RiskFinding]:
+        severities = ["low", "critical", "medium", "high", "high", "low"]
+        return [
+            RiskFinding(
+                id=f"finding-{index}",
+                category="termination",
+                severity=severity,
+                explanation="Fesih riski.",
+                recommendation="Duzeltin.",
+                confidence=1.0,
+            )
+            for index, severity in enumerate(severities, start=1)
+        ]
+
+    async def build_legal_queries(self, findings: list[RiskFinding]) -> list[str]:
+        return [finding.id for finding in findings]
+
+
+class QueryRecordingYargiClient:
+    def __init__(self) -> None:
+        self.queries: list[str] = []
+
+    async def search(self, query: str, category: str | None = None) -> list[YargiDecision]:
+        self.queries.append(query)
+        return []
+
+
+@pytest.mark.asyncio
+async def test_precedent_search_covers_only_the_most_severe_findings() -> None:
+    yargi_client = QueryRecordingYargiClient()
+    report = await analyze_contract(
+        file_name="contract.docx",
+        file_type="docx",
+        raw_text="contract text",
+        analyzer=ManyFindingsAnalyzer(),
+        yargi_client=yargi_client,
+        app_settings=Settings(YARGI_MAX_FINDINGS=2),
+    )
+
+    assert yargi_client.queries == ["finding-2", "finding-4"]
+    assert "Precedent search covered only the 2 most severe of 6 findings." in report.limitations
+
+
+def test_relevant_passage_prefers_reasoning_over_claims_and_boilerplate() -> None:
+    boilerplate = "Bölge Adliye Mahkemesi kararı temyiz edilmekle; kesinlik, süre, temyiz şartı yönünden ön inceleme yapıldı. " * 3
+    claim = "Davacı vekili, sözleşmedeki cezai şartın ödenmesi gerektiğini ileri sürerek alacağın tahsilini talep etmiştir. " * 2
+    reasoning = "Cezai şart fahiş ise hâkim tarafından resen indirilir; TBK 182 uyarınca indirim zorunludur ve somut olayda yapılmalıdır."
+    text = "\n".join([boilerplate, "I. DAVA", claim, "V. TEMYİZ", "2. Değerlendirme", reasoning, "x" * 1500])
+
+    passage = relevant_passage(text, "penalty_clause")
+
+    assert passage.startswith("Cezai şart fahiş ise")
+    assert len(passage) <= EXCERPT_LIMIT
+    assert relevant_passage("Kısa KVKK açıklaması.", "data_protection") == "Kısa KVKK açıklaması."

@@ -1,24 +1,22 @@
 import asyncio
-import unicodedata
+import re
+
 from langgraph.graph import END, StateGraph
 
 from .config import Settings, settings
-from .llm import ContractAnalyzer, normalize_risk_findings
-from .models import ContractAnalysisState, ContractReport, YargiDecision
-from .risk import calculate_risk_score, risk_level_for_score
-from .yargi_client import YargiClient
-
-
-def _normalize_text(text: str) -> str:
-    normalized = unicodedata.normalize("NFKD", text.casefold())
-    return "".join(char for char in normalized if not unicodedata.combining(char))
+from .llm import ContractAnalyzer, _searchable, normalize_risk_findings
+from .models import ContractAnalysisState, ContractReport, RiskFinding, YargiDecision
+from .risk import SEVERITY_WEIGHTS, calculate_risk_score, risk_level_for_score
+from .yargi_client import YargiClient, YargiRateLimitError
 
 
 MAX_RELATED_DECISIONS = 5
 MAX_RELATED_DECISIONS_PER_FINDING = 1
 MISSING_EXCERPT_LIMITATION = "Some Yargi MCP results had no excerpt and were deprioritized."
 NO_RELEVANT_DECISION_LIMITATION = "No sufficiently relevant Yargi MCP decision was found for some findings."
+EXCERPT_LIMIT = 1200
 RETRIEVAL_FAILED_LIMITATION = "Some Yargi MCP searches failed."
+RETRIEVAL_RATE_LIMITED_LIMITATION = "Yargi MCP rate limit was hit; some searches were skipped."
 RETRIEVAL_TIMEOUT_LIMITATION = "Yargi MCP searches exceeded the total time limit; partial results are shown."
 
 RELEVANCE_TERMS_BY_CATEGORY = {
@@ -117,7 +115,44 @@ RELEVANCE_TERMS_BY_CATEGORY = {
         "tahliye davası",
         "tahliye tarihi",
     ],
+    "cash_payment": [
+        "elden ödeme",
+        "elden ödendiği",
+        "banka kanalı",
+        "banka aracılığıyla",
+        "ödeme makbuzu",
+        "ödendiğinin ispatı",
+        "kira alacağı",
+        "kira bedelinin ödendiği",
+    ],
+    "unlawful_entry": [
+        "konut dokunulmazlığı",
+        "konuta girme",
+        "izinsiz giriş",
+        "kiracının rızası",
+        "kiralananı gezdirme",
+        "özel hayat",
+    ],
+    "liability": [
+        "sorumsuzluk",
+        "sorumluluğun sınırlandırılması",
+        "sorumluluktan kurtulma",
+        "sorumluluk kaydı",
+        "ağır kusur",
+        "hafif kusur",
+    ],
+    "dispute_resolution": [
+        "tahkim",
+        "tahkim şartı",
+        "hakem kararı",
+        "tahkim itirazı",
+        "istac",
+        "milletlerarası tahkim",
+    ],
 }
+# Contract risks are private law; criminal chambers only matter where the clause itself may amount to a crime.
+CRIMINAL_CHAMBER_MARKERS = ("ceza dairesi", "ceza genel kurulu", "ceza daireleri")
+CATEGORIES_ALLOWING_CRIMINAL_DECISIONS = {"unlawful_entry"}
 
 
 def is_relevant_decision(decision: YargiDecision) -> bool:
@@ -126,14 +161,19 @@ def is_relevant_decision(decision: YargiDecision) -> bool:
         return True
     terms = RELEVANCE_TERMS_BY_CATEGORY.get(category)
     if not terms:
-        return True
+        # Without terms we cannot judge relevance; showing nothing beats showing an unrelated decision.
+        return False
+    if category not in CATEGORIES_ALLOWING_CRIMINAL_DECISIONS and any(
+        marker in _searchable(decision.title) for marker in map(_searchable, CRIMINAL_CHAMBER_MARKERS)
+    ):
+        return False
     raw_haystack = " ".join(
         part
         for part in [decision.title, decision.excerpt]
         if part
     )
-    haystack = _normalize_text(raw_haystack)
-    matches = sum(1 for term in terms if _normalize_text(term) in haystack)
+    haystack = _searchable(raw_haystack)
+    matches = sum(1 for term in terms if _searchable(term) in haystack)
     return matches >= min(2, len(terms))
 
 
@@ -168,28 +208,55 @@ def select_related_decisions(
     return selected, limitations
 
 
-async def hydrate_selected_decisions(
+REASONING_HEADING = re.compile(r"^(\*\*)?\s*([ivx]+\.\s*temyiz|\d*\.?\s*degerlendirme|gerekce)\b")
+MIN_PASSAGE_LINE = 100
+
+
+def relevant_passage(text: str, category: str | None, limit: int = EXCERPT_LIMIT) -> str:
+    # Decisions open with procedural boilerplate; show the court's reasoning on the risk instead.
+    if len(text) <= limit:
+        return text
+    terms = [_searchable(term) for term in RELEVANCE_TERMS_BY_CATEGORY.get(category or "", [])]
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    reasoning_start = next(
+        (index for index, line in enumerate(lines) if REASONING_HEADING.match(_searchable(line))),
+        len(lines),
+    )
+    candidates = [index for index, line in enumerate(lines) if len(line) >= MIN_PASSAGE_LINE]
+    if not candidates:
+        return text[:limit]
+
+    def score(index: int) -> tuple[bool, int, int]:
+        hits = sum(term in _searchable(lines[index]) for term in terms)
+        return (hits > 0 and index > reasoning_start, hits, -index)
+
+    passage = ""
+    for line in lines[max(candidates, key=score):]:
+        if passage and len(passage) + len(line) + 1 > limit:
+            break
+        passage = f"{passage}\n{line}" if passage else line
+    return passage[:limit]
+
+
+async def hydrate_decisions(
     decisions: list[YargiDecision],
     yargi_client: YargiClient,
 ) -> None:
+    # Bedesten/Emsal search results carry no text, so relevance can only be judged after fetching it.
     fetch_decision_text = getattr(yargi_client, "fetch_decision_text", None)
     if fetch_decision_text is None:
+        return
+    # Only one decision per finding is reported, so stop fetching once one is relevant; fetches are rate limited.
+    if any(decision.excerpt and is_relevant_decision(decision) for decision in decisions):
         return
     for decision in decisions:
         if decision.excerpt:
             continue
         document_text = await fetch_decision_text(decision)
         if document_text:
-            decision.excerpt = document_text[:1200]
-
-
-def filter_hydrated_decisions(
-    decisions: list[YargiDecision],
-) -> tuple[list[YargiDecision], list[str]]:
-    relevant = [decision for decision in decisions if is_relevant_decision(decision)]
-    if len(relevant) == len(decisions):
-        return relevant, []
-    return relevant, [NO_RELEVANT_DECISION_LIMITATION]
+            decision.excerpt = document_text
+            if is_relevant_decision(decision):
+                return
 
 
 async def analyze_contract(
@@ -223,18 +290,40 @@ async def analyze_contract(
         }
 
     async def build_legal_queries(state: ContractAnalysisState) -> dict:
+        # Precedent search is slow and rate limited, so only the most severe findings get one.
+        ranked = sorted(
+            state.findings,
+            key=lambda finding: SEVERITY_WEIGHTS[finding.severity] * finding.confidence,
+            reverse=True,
+        )
+        searched = ranked[: app_settings.yargi_max_findings]
         queries = {
             finding.id: await analyzer.build_legal_queries([finding])
-            for finding in state.findings
+            for finding in searched
         }
-        return {"legal_queries": queries}
+        limitations = list(state.limitations)
+        if len(searched) < len(ranked):
+            limitations.append(
+                f"Precedent search covered only the {len(searched)} most severe of {len(ranked)} findings."
+            )
+        return {"legal_queries": queries, "limitations": limitations}
 
     async def retrieve_yargi_decisions(state: ContractAnalysisState) -> dict:
         decisions_by_finding: dict[str, list[YargiDecision]] = {}
         seen_decisions: set[str] = set()
         limitations = list(state.limitations)
+
+        async def search_and_hydrate(query: str, finding: RiskFinding) -> list[YargiDecision]:
+            decisions = await yargi_client.search(query, category=finding.category)
+            for decision in decisions:
+                decision.finding_id = finding.id
+                decision.finding_category = finding.category
+            if app_settings.yargi_fetch_documents:
+                await hydrate_decisions(decisions, yargi_client)
+            return decisions
+
         searches = [
-            (finding, asyncio.create_task(yargi_client.search(query, category=finding.category)))
+            (finding, asyncio.create_task(search_and_hydrate(query, finding)))
             for finding in state.findings
             for query in state.legal_queries.get(finding.id, [])
         ]
@@ -252,24 +341,27 @@ async def analyze_contract(
             if not task.done():
                 continue
             if task.exception() is not None:
-                if RETRIEVAL_FAILED_LIMITATION not in limitations:
-                    limitations.append(RETRIEVAL_FAILED_LIMITATION)
+                limitation = (
+                    RETRIEVAL_RATE_LIMITED_LIMITATION
+                    if isinstance(task.exception(), YargiRateLimitError)
+                    else RETRIEVAL_FAILED_LIMITATION
+                )
+                if limitation not in limitations:
+                    limitations.append(limitation)
                 continue
             for decision in task.result():
-                decision.finding_id = finding.id
-                decision.finding_category = finding.category
                 key = decision_key(decision)
                 if key in seen_decisions:
                     continue
                 seen_decisions.add(key)
                 decisions_by_finding.setdefault(finding.id, []).append(decision)
         decisions, selection_limitations = select_related_decisions(decisions_by_finding, app_settings)
-        if app_settings.yargi_fetch_documents:
-            await hydrate_selected_decisions(decisions, yargi_client)
-        decisions, hydration_limitations = filter_hydrated_decisions(decisions)
+        for decision in decisions:
+            if decision.excerpt:
+                decision.excerpt = relevant_passage(decision.excerpt, decision.finding_category)
         limitations.extend(
             limitation
-            for limitation in [*selection_limitations, *hydration_limitations]
+            for limitation in selection_limitations
             if limitation not in limitations
         )
         return {"related_decisions": decisions, "limitations": limitations}

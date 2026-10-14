@@ -27,27 +27,43 @@ Your `.env` file should be configured as follows:
 
 ```ini
 GEMINI_API_KEY=
-GEMINI_MODEL=gemma-3-27b-it
-YARGI_MCP_URL=https://yargimcp.surucu.dev/mcp
+GEMINI_MODEL=gemini-3.5-flash-lite
+GEMINI_FALLBACK_MODEL=gemini-3.1-flash-lite
+GEMINI_TIMEOUT_SECONDS=60
+YARGI_MCP_URL=http://127.0.0.1:8001/mcp/
 USE_REMOTE_YARGI=true
 YARGI_MAX_RESULTS_PER_FINDING=3
 YARGI_MAX_TOTAL_DECISIONS=10
-YARGI_FETCH_DOCUMENTS=false
+YARGI_FETCH_DOCUMENTS=true
 YARGI_REQUEST_TIMEOUT_SECONDS=30
-YARGI_TOTAL_TIMEOUT_SECONDS=60
+YARGI_TOTAL_TIMEOUT_SECONDS=120
+YARGI_MAX_FINDINGS=4
+YARGI_MAX_CONCURRENCY=1
 MAX_UPLOAD_BYTES=10485760
+APP_PORT=8000
 ```
 
-### 2. Start the Server
+### 2. Start the Yargı MCP Server
 
-To launch the FastAPI server, run:
+The public hosted endpoint is not reliable, so run [yargi-mcp](https://pypi.org/project/yargi-mcp/) locally in its own isolated environment. Dependencies are pinned to the package's release date because newer `mcp` releases break it:
+
+```bash
+uv tool run --python 3.11 --exclude-newer 2026-07-15 --from "yargi-mcp[asgi]==0.2.2" uvicorn asgi_app:app --host 127.0.0.1 --port 8001
+```
+
+`YARGI_MCP_URL` must point to `http://127.0.0.1:8001/mcp/`.
+
+### 3. Start the Server
+
+In a second terminal (keep the Yargı MCP server running), launch the FastAPI server:
 
 ```bash
 uv run python main.py
 ```
 
-Once the server has started, the interactive API documentation (Swagger UI) will be available at:
-`http://localhost:8000/docs`
+It listens on `127.0.0.1` and the port set by `APP_PORT` (default `8000`; change it if that port is taken). The interactive API documentation (Swagger UI) is then at `http://localhost:<APP_PORT>/docs`.
+
+`.env` is read only at startup, so restart the server after editing it.
 
 ---
 
@@ -69,6 +85,8 @@ curl -X POST "http://localhost:8000/api/v1/contracts/analyze" \
   -F "file=@contract.pdf"
 ```
 
+`contract_type` is optional; allowed values are `service` and `lease`.
+
 ---
 
 ## Output JSON Schema
@@ -89,6 +107,8 @@ The analysis report returns a JSON payload with the following fields:
 *   **`recommended_actions`** (array of strings): Quick action list for contract redlines.
 *   **`related_decisions`** (array): Precedent legal decisions matched on Yargı MCP (source, title, excerpt, and URL).
 *   **`limitations`** (array): Encountered technical limits or retrieval constraints.
+*   **`llm_engine`** (string): Gemini model that analyzed the contract, or `rules` with the reason when no API key is set.
+*   **`yargi_source`** (string): Yargı MCP URL that was queried, or `fake` with the reason when remote search is disabled.
 
 ---
 
