@@ -1,7 +1,7 @@
 import unicodedata
 from langgraph.graph import END, StateGraph
 
-from .config import settings
+from .config import Settings, settings
 from .llm import ContractAnalyzer, normalize_risk_findings
 from .models import ContractAnalysisState, ContractReport, YargiDecision
 from .risk import calculate_risk_score, risk_level_for_score
@@ -136,11 +136,12 @@ def is_relevant_decision(decision: YargiDecision) -> bool:
 
 def select_related_decisions(
     decisions_by_finding: dict[str, list[YargiDecision]],
+    app_settings: Settings = settings,
 ) -> tuple[list[YargiDecision], list[str]]:
     selected: list[YargiDecision] = []
     limitations: list[str] = []
     saw_missing_excerpt = False
-    total_limit = min(settings.yargi_max_total_decisions, MAX_RELATED_DECISIONS)
+    total_limit = min(app_settings.yargi_max_total_decisions, MAX_RELATED_DECISIONS)
 
     for decisions in decisions_by_finding.values():
         if not decisions or len(selected) >= total_limit:
@@ -196,6 +197,7 @@ async def analyze_contract(
     analyzer: ContractAnalyzer,
     yargi_client: YargiClient,
     contract_type: str | None = None,
+    app_settings: Settings = settings,
 ) -> ContractReport:
     def decision_key(decision) -> str:
         return decision.url or decision.decision_number or f"{decision.source}:{decision.title}"
@@ -218,7 +220,10 @@ async def analyze_contract(
         }
 
     async def build_legal_queries(state: ContractAnalysisState) -> dict:
-        queries = await analyzer.build_legal_queries(state.findings)
+        queries = {
+            finding.id: await analyzer.build_legal_queries([finding])
+            for finding in state.findings
+        }
         return {"legal_queries": queries}
 
     async def retrieve_yargi_decisions(state: ContractAnalysisState) -> dict:
@@ -227,8 +232,7 @@ async def analyze_contract(
         limitations = list(state.limitations)
         try:
             for finding in state.findings:
-                queries = await analyzer.build_legal_queries([finding])
-                for query in queries:
+                for query in state.legal_queries.get(finding.id, []):
                     found_decisions = await yargi_client.search(query, category=finding.category)
                     for decision in found_decisions:
                         decision.finding_id = finding.id
@@ -240,8 +244,9 @@ async def analyze_contract(
                         decisions_by_finding.setdefault(finding.id, []).append(decision)
         except Exception:
             limitations.append("Yargi MCP retrieval failed.")
-        decisions, selection_limitations = select_related_decisions(decisions_by_finding)
-        await hydrate_selected_decisions(decisions, yargi_client)
+        decisions, selection_limitations = select_related_decisions(decisions_by_finding, app_settings)
+        if app_settings.yargi_fetch_documents:
+            await hydrate_selected_decisions(decisions, yargi_client)
         decisions, hydration_limitations = filter_hydrated_decisions(decisions)
         limitations.extend(
             limitation
