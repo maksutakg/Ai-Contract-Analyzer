@@ -9,6 +9,7 @@ from law_rag.graph import (
     analyze_contract,
     select_related_decisions,
     is_relevant_decision,
+    relevant_passage,
 )
 from law_rag.models import Clause, RiskFinding, YargiDecision
 from law_rag.yargi_client import YargiRateLimitError
@@ -345,3 +346,16 @@ async def test_precedent_search_covers_only_the_most_severe_findings() -> None:
 
     assert yargi_client.queries == ["finding-2", "finding-4"]
     assert "Precedent search covered only the 2 most severe of 6 findings." in report.limitations
+
+
+def test_relevant_passage_prefers_reasoning_over_claims_and_boilerplate() -> None:
+    boilerplate = "Bölge Adliye Mahkemesi kararı temyiz edilmekle; kesinlik, süre, temyiz şartı yönünden ön inceleme yapıldı. " * 3
+    claim = "Davacı vekili, sözleşmedeki cezai şartın ödenmesi gerektiğini ileri sürerek alacağın tahsilini talep etmiştir. " * 2
+    reasoning = "Cezai şart fahiş ise hâkim tarafından resen indirilir; TBK 182 uyarınca indirim zorunludur ve somut olayda yapılmalıdır."
+    text = "\n".join([boilerplate, "I. DAVA", claim, "V. TEMYİZ", "2. Değerlendirme", reasoning, "x" * 1500])
+
+    passage = relevant_passage(text, "penalty_clause")
+
+    assert passage.startswith("Cezai şart fahiş ise")
+    assert len(passage) <= EXCERPT_LIMIT
+    assert relevant_passage("Kısa KVKK açıklaması.", "data_protection") == "Kısa KVKK açıklaması."

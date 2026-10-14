@@ -1,4 +1,6 @@
 import asyncio
+import re
+
 from langgraph.graph import END, StateGraph
 
 from .config import Settings, settings
@@ -206,6 +208,36 @@ def select_related_decisions(
     return selected, limitations
 
 
+REASONING_HEADING = re.compile(r"^(\*\*)?\s*([ivx]+\.\s*temyiz|\d*\.?\s*degerlendirme|gerekce)\b")
+MIN_PASSAGE_LINE = 100
+
+
+def relevant_passage(text: str, category: str | None, limit: int = EXCERPT_LIMIT) -> str:
+    # Decisions open with procedural boilerplate; show the court's reasoning on the risk instead.
+    if len(text) <= limit:
+        return text
+    terms = [_searchable(term) for term in RELEVANCE_TERMS_BY_CATEGORY.get(category or "", [])]
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    reasoning_start = next(
+        (index for index, line in enumerate(lines) if REASONING_HEADING.match(_searchable(line))),
+        len(lines),
+    )
+    candidates = [index for index, line in enumerate(lines) if len(line) >= MIN_PASSAGE_LINE]
+    if not candidates:
+        return text[:limit]
+
+    def score(index: int) -> tuple[bool, int, int]:
+        hits = sum(term in _searchable(lines[index]) for term in terms)
+        return (hits > 0 and index > reasoning_start, hits, -index)
+
+    passage = ""
+    for line in lines[max(candidates, key=score):]:
+        if passage and len(passage) + len(line) + 1 > limit:
+            break
+        passage = f"{passage}\n{line}" if passage else line
+    return passage[:limit]
+
+
 async def hydrate_decisions(
     decisions: list[YargiDecision],
     yargi_client: YargiClient,
@@ -326,7 +358,7 @@ async def analyze_contract(
         decisions, selection_limitations = select_related_decisions(decisions_by_finding, app_settings)
         for decision in decisions:
             if decision.excerpt:
-                decision.excerpt = decision.excerpt[:EXCERPT_LIMIT]
+                decision.excerpt = relevant_passage(decision.excerpt, decision.finding_category)
         limitations.extend(
             limitation
             for limitation in selection_limitations

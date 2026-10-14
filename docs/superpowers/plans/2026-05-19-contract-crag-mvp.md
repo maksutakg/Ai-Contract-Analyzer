@@ -1,5 +1,7 @@
 # Contract CRAG MVP Implementation Plan
 
+> **Historical document.** This describes the original MVP plan and is no longer kept in sync with the code. See `README.md` for current setup and behavior.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a FastAPI + LangGraph MVP that accepts one PDF/DOCX contract, analyzes clauses and risks, retrieves mocked or live Yargi MCP decisions, and returns a structured JSON report.

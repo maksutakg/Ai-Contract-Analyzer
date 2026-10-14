@@ -6,8 +6,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     gemini_api_key: str | None = Field(default=None, validation_alias="GEMINI_API_KEY")
-    gemini_model: str = Field(default="gemini-3.8-flash", validation_alias="GEMINI_MODEL")
-    gemini_fallback_model: str = Field(default="gemini-3.5-flash-lite", validation_alias="GEMINI_FALLBACK_MODEL")
+    gemini_model: str = Field(default="gemini-3.5-flash-lite", validation_alias="GEMINI_MODEL")
+    gemini_fallback_model: str = Field(default="gemini-3.1-flash-lite", validation_alias="GEMINI_FALLBACK_MODEL")
     gemini_timeout_seconds: float = Field(default=60.0, validation_alias="GEMINI_TIMEOUT_SECONDS")
     yargi_mcp_url: str = Field(
         default="http://127.0.0.1:8001/mcp/",
@@ -30,6 +30,7 @@ class Settings(BaseSettings):
         default=120.0,
         validation_alias="YARGI_TOTAL_TIMEOUT_SECONDS",
     )
+    app_port: int = Field(default=8000, validation_alias="APP_PORT")
     max_upload_bytes: int = Field(default=10 * 1024 * 1024, validation_alias="MAX_UPLOAD_BYTES")
 
 

@@ -27,8 +27,8 @@ Your `.env` file should be configured as follows:
 
 ```ini
 GEMINI_API_KEY=
-GEMINI_MODEL=gemini-3.8-flash
-GEMINI_FALLBACK_MODEL=gemini-3.5-flash-lite
+GEMINI_MODEL=gemini-3.5-flash-lite
+GEMINI_FALLBACK_MODEL=gemini-3.1-flash-lite
 GEMINI_TIMEOUT_SECONDS=60
 YARGI_MCP_URL=http://127.0.0.1:8001/mcp/
 USE_REMOTE_YARGI=true
@@ -40,6 +40,7 @@ YARGI_TOTAL_TIMEOUT_SECONDS=120
 YARGI_MAX_FINDINGS=4
 YARGI_MAX_CONCURRENCY=1
 MAX_UPLOAD_BYTES=10485760
+APP_PORT=8000
 ```
 
 ### 2. Start the Yargı MCP Server
@@ -54,14 +55,15 @@ uv tool run --python 3.11 --exclude-newer 2026-07-15 --from "yargi-mcp[asgi]==0.
 
 ### 3. Start the Server
 
-To launch the FastAPI server, run:
+In a second terminal (keep the Yargı MCP server running), launch the FastAPI server:
 
 ```bash
 uv run python main.py
 ```
 
-Once the server has started, the interactive API documentation (Swagger UI) will be available at:
-`http://localhost:8000/docs`
+It listens on `127.0.0.1` and the port set by `APP_PORT` (default `8000`; change it if that port is taken). The interactive API documentation (Swagger UI) is then at `http://localhost:<APP_PORT>/docs`.
+
+`.env` is read only at startup, so restart the server after editing it.
 
 ---
 
