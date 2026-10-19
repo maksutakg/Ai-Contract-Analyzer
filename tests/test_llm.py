@@ -374,5 +374,5 @@ async def test_summary_failure_falls_back_to_rules(monkeypatch) -> None:
 
     summary = await analyzer.summarize_contract("Sozlesme metni", contract_type="service")
 
-    assert "MVP ozet" in summary
+    assert summary.startswith("Service agreement, opening text:")
     assert analyzer.limitations == [SUMMARY_FALLBACK_LIMITATION]

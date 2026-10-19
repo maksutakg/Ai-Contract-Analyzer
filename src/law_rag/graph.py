@@ -210,6 +210,7 @@ def select_related_decisions(
 
 REASONING_HEADING = re.compile(r"^(\*\*)?\s*([ivx]+\.\s*temyiz|\d*\.?\s*degerlendirme|gerekce)\b")
 MIN_PASSAGE_LINE = 100
+HTML_TAG = re.compile(r"<[^>]+>")
 
 
 def relevant_passage(text: str, category: str | None, limit: int = EXCERPT_LIMIT) -> str:
@@ -358,7 +359,9 @@ async def analyze_contract(
         decisions, selection_limitations = select_related_decisions(decisions_by_finding, app_settings)
         for decision in decisions:
             if decision.excerpt:
-                decision.excerpt = relevant_passage(decision.excerpt, decision.finding_category)
+                # Sources such as KVKK return HTML fragments; the report carries plain text.
+                plain = HTML_TAG.sub("", decision.excerpt)
+                decision.excerpt = relevant_passage(plain, decision.finding_category)
         limitations.extend(
             limitation
             for limitation in selection_limitations

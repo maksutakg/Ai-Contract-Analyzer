@@ -359,3 +359,33 @@ def test_relevant_passage_prefers_reasoning_over_claims_and_boilerplate() -> Non
     assert passage.startswith("Cezai şart fahiş ise")
     assert len(passage) <= EXCERPT_LIMIT
     assert relevant_passage("Kısa KVKK açıklaması.", "data_protection") == "Kısa KVKK açıklaması."
+
+
+class HtmlExcerptYargiClient:
+    async def search(self, query: str, category: str | None = None) -> list[YargiDecision]:
+        return [
+            YargiDecision(
+                source="Yargi MCP / KVKK",
+                title="KVKK veri ihlali kararı",
+                relevance=query,
+                excerpt="Veri işleyen <strong>kişisel veri</strong> ihlali bildirmiştir.",
+            )
+        ]
+
+
+@pytest.mark.asyncio
+async def test_excerpts_are_plain_text() -> None:
+    class DataProtectionAnalyzer(AnalyzerWithGenericCategories):
+        async def classify_risks(self, clauses, contract_type=None):
+            return [RiskFinding(id="finding-1", category="data_protection", severity="high",
+                                explanation="KVKK.", recommendation="Duzeltin.")]
+
+    report = await analyze_contract(
+        file_name="contract.docx",
+        file_type="docx",
+        raw_text="contract text",
+        analyzer=DataProtectionAnalyzer(),
+        yargi_client=HtmlExcerptYargiClient(),
+    )
+
+    assert report.related_decisions[0].excerpt == "Veri işleyen kişisel veri ihlali bildirmiştir."

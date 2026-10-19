@@ -204,3 +204,14 @@ async def test_rate_limited_document_fetch_is_not_silently_empty() -> None:
 
     with pytest.raises(YargiRateLimitError):
         await client.fetch_decision_text(decision)
+
+
+@pytest.mark.asyncio
+async def test_decisions_name_the_issuing_court() -> None:
+    client = RawPayloadClient(
+        {"decisions": [{"documentId": "1", "itemType": {"name": "DANISTAYKARAR"}, "birimAdi": "8. Daire"}]}
+    )
+
+    decisions = await client.search('"imar"', category="termination")
+
+    assert decisions[0].court == "Danıştay"

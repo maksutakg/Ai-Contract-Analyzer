@@ -1,0 +1,166 @@
+{
+  "contract_summary": "İşbu Yazılım Geliştirme Hizmet Sözleşmesi'nin özeti hukuki inceleme için aşağıda sunulmuştur:\n\n*   **Taraflar ve Konu:** Sözleşme, ABC Teknoloji A.Ş. (İş Veren) ile XYZ Yazılım Ltd. Şti. (Yüklenici) arasında akdedilmiş olup; Yüklenici'nin e-ticaret platformu ve mobil uygulama geliştirmesi ile bakım-destek hizmeti vermesini kapsamaktadır.\n*   **Süre, Bedel ve Ödeme:** Sözleşme süresi 12 aydır. Toplam bedel 2.400.000 TL + KDV olup, aylık eşit taksitler halinde ödenecektir; geciken ödemelere aylık %5 faiz uygulanır.\n*   **Fesih:** İş Veren, herhangi bir gerekçe göstermeksizin sözleşmeyi tek taraflı ve derhal feshetme hakkına sahip olup, Yüklenici bu durumda tazminat talep edemez.\n*   **Fikri Mülkiyet:** Geliştirilen yazılımın kaynak kodları ve tüm fikri mülkiyet hakları bedelsiz ve süresiz olarak İş Verene devredilmektedir.\n*   **Uyuşmazlık Çözümü:** Taraflar arasında doğabilecek uyuşmazlıklar, İstanbul'da ISTAC tahkim kurallarına göre çözümlenecektir.",
+  "risk_score": 97,
+  "risk_level": "critical",
+  "clauses": [
+    {
+      "id": "clause-1",
+      "title": "MADDE 1 - TARAFLAR",
+      "text": "İşbu sözleşme ABC Teknoloji A.Ş. (İş Veren) ile XYZ Yazılım Ltd. Şti. (Yüklenici) arasında İstanbul'da imzalanmıştır."
+    },
+    {
+      "id": "clause-2",
+      "title": "MADDE 2 - KONU",
+      "text": "Yüklenici, İş Veren için e-ticaret platformu ve mobil uygulama geliştirecek, bakım ve destek hizmeti verecektir."
+    },
+    {
+      "id": "clause-3",
+      "title": "MADDE 3 - SÜRE VE BEDEL",
+      "text": "Sözleşme süresi 12 aydır. Toplam hizmet bedeli 2.400.000 TL + KDV olup aylık eşit taksitlerle ödenir. Geciken ödemeler için aylık %5 gecikme faizi uygulanır."
+    },
+    {
+      "id": "clause-4",
+      "title": "MADDE 4 - FESİH",
+      "text": "İş Veren, herhangi bir gerekçe göstermeksizin sözleşmeyi tek taraflı olarak derhal fesih hakkına sahiptir. Bu durumda Yüklenici hiçbir tazminat talep edemez."
+    },
+    {
+      "id": "clause-5",
+      "title": "MADDE 5 - CEZAİ ŞART",
+      "text": "Teslim tarihlerinden herhangi birinde 1 günlük gecikme halinde Yüklenici, sözleşme bedelinin %20'si oranında cezai şart öder. Cezai şart ayrıca zararın tazminine engel değildir."
+    },
+    {
+      "id": "clause-6",
+      "title": "MADDE 6 - FİKRİ MÜLKİYET",
+      "text": "Yüklenicinin sözleşme öncesinde geliştirdiği kütüphaneler ve framework dahil tüm kaynak kodun fikri mülkiyet hakları bedelsiz olarak süresiz şekilde İş Verene devredilir."
+    },
+    {
+      "id": "clause-7",
+      "title": "MADDE 7 - KİŞİSEL VERİLER",
+      "text": "Yüklenici, veri işleyen sıfatıyla İş Verenin müşterilerine ait kişisel verileri işleyecektir. Veri ihlali halinde KVKK kapsamındaki tüm sorumluluk Yükleniciye aittir; İş Veren hiçbir sorumluluk kabul etmez."
+    },
+    {
+      "id": "clause-8",
+      "title": "MADDE 8 - MÜCBİR SEBEP",
+      "text": "Deprem, sel ve diğer olağanüstü durumlar mücbir sebep sayılır. Pandemi ve siber saldırılar mücbir sebep kapsamında değildir."
+    },
+    {
+      "id": "clause-9",
+      "title": "MADDE 9 - UYUŞMAZLIK",
+      "text": "Taraflar arasındaki uyuşmazlıklar ISTAC tahkim kuralları uyarınca İstanbul'da tahkim yoluyla çözülür."
+    }
+  ],
+  "findings": [
+    {
+      "id": "finding-1",
+      "category": "penalty_clause",
+      "severity": "critical",
+      "explanation": "Sözleşme bedelinin %20'si oranındaki cezai şart fahiş nitelikte olup Türk Borçlar Kanunu uyarınca mahkemeden indirilmesi mümkündür.",
+      "recommendation": "Cezai şart oranı makul bir yüzdeye çekilmeli ve Türk Borçlar Kanunu hükümlerine uygun hale getirilmelidir.",
+      "confidence": 0.95,
+      "clause_id": "clause-5"
+    },
+    {
+      "id": "finding-2",
+      "category": "termination",
+      "severity": "high",
+      "explanation": "İş Verene gerekçesiz ve tazminatsız derhal fesih hakkı tanınması dengesiz olup Yüklenicinin haklarını zedelemektedir.",
+      "recommendation": "Fesih için ihbar süresi eklenmeli ve haksız fesih durumunda Yüklenicinin masraf veya tazminat talebi güvence altına alınmalıdır.",
+      "confidence": 0.95,
+      "clause_id": "clause-4"
+    },
+    {
+      "id": "finding-3",
+      "category": "payment_interest",
+      "severity": "high",
+      "explanation": "Aylık %5 (yıllık %60+) gecikme faizi oranı Türk Borçlar Kanunu'ndaki yasal sınırların ve aşırı faiz yasaklarının ihlali riski taşır.",
+      "recommendation": "Gecikme faiz oranının yasal mevzuata ve piyasa koşullarına uygun makul bir seviyeye indirilmesi gereklidir.",
+      "confidence": 0.9,
+      "clause_id": "clause-3"
+    },
+    {
+      "id": "finding-4",
+      "category": "intellectual_property",
+      "severity": "high",
+      "explanation": "Yüklenicinin önceden sahip olduğu kütüphane ve altyapı haklarının da bedelsiz devri tek taraflı ve hakkaniyetsizdir.",
+      "recommendation": "Önceden var olan fikri mülkiyet haklarının Yüklenicide kalması, sadece yeni geliştirilen işler için devir yapılması sağlanmalıdır.",
+      "confidence": 0.9,
+      "clause_id": "clause-6"
+    },
+    {
+      "id": "finding-5",
+      "category": "data_protection",
+      "severity": "high",
+      "explanation": "Veri ihlallerinde tüm sorumluluğun sadece veri işleyene yüklenmesi KVKK uyumluluğu ve ortak sorumluluk ilkelerine aykırıdır.",
+      "recommendation": "Sorumluluk tarafların kusur oranlarına ve KVKK'daki yasal rollerine göre yeniden düzenlenmelidir.",
+      "confidence": 0.9,
+      "clause_id": "clause-7"
+    }
+  ],
+  "recommended_actions": [
+    "Cezai şart oranı makul bir yüzdeye çekilmeli ve Türk Borçlar Kanunu hükümlerine uygun hale getirilmelidir.",
+    "Fesih için ihbar süresi eklenmeli ve haksız fesih durumunda Yüklenicinin masraf veya tazminat talebi güvence altına alınmalıdır.",
+    "Gecikme faiz oranının yasal mevzuata ve piyasa koşullarına uygun makul bir seviyeye indirilmesi gereklidir.",
+    "Önceden var olan fikri mülkiyet haklarının Yüklenicide kalması, sadece yeni geliştirilen işler için devir yapılması sağlanmalıdır.",
+    "Sorumluluk tarafların kusur oranlarına ve KVKK'daki yasal rollerine göre yeniden düzenlenmelidir."
+  ],
+  "related_decisions": [
+    {
+      "finding_id": "finding-1",
+      "finding_category": "penalty_clause",
+      "source": "Yargi MCP / Bedesten",
+      "title": "3. Hukuk Dairesi - E. 2026/3504, K. 2026/3689 - 09.06.2026",
+      "relevance": "'+\"cezai şart\" +\"fahiş\" +\"indirim\"' sorgusu icin Bedesten uzerinden bulunan karar.",
+      "confidence": 0.72,
+      "decision_date": "09.06.2026",
+      "decision_number": "E. 2026/3504, K. 2026/3689",
+      "excerpt": "Davalı ... vekili; ilk hükümde alacağın dava tarihi itibariyle Türk Lirası karşılığına hükmedilmesine dair kararın davacı tarafça temyiz edilmediğinden usuli kazanılmış hak oluşturduğunu, tapulu taşınmazların ifasının tapuda yapıldığını, davacıların tapuyu devralırken cezai şart alacağını saklı tutmadıklarını, taşınmaz uzun süre kullanıldıktan sonra cezai şart talebinde bulunulmasının hakkın kötüye kullanımı niteliğinde olduğunu, müvekkilinin satıcı olmadığını, tarafların yeminli tercüman huzurunda ibralaştıklarını, burada diğer davalının satıcı olduğunu, müvekkiline imzalatılan satış sözleşmesi sonrasında diğer davalının satış bedelini alması ile ibranameyi satıcı olarak imzalaması nedeniyle müvekkilinin hukuki sorumluluğunun kalmadığını, müvekkilinin inşaatın yüklenicisi olmadığını, sadece tapuda malik olduğu süre için satıcı sıfatını taşıdığını ve tapuyu dava dışı Osmana devrederek satıcılık sıfatını yitirdiğini, satış bedelinin dava dışı yüklenici şirkete ödendiğini, belirtilen süre içinde teslim edildiğini, ispat yükünün tayininde hataya düşüldüğünü, yemin delilinin göz ardı edildiğini, ihbar olunan şirketin beyanlarının göz ardı edildiğini, müvekkilinin sosyal ve ekonomik dur",
+      "url": "https://mevzuat.adalet.gov.tr/ictihat/1231059600",
+      "court": "Yargıtay"
+    },
+    {
+      "finding_id": "finding-2",
+      "finding_category": "termination",
+      "source": "Yargi MCP / Bedesten",
+      "title": "9. Hukuk Dairesi - E. 2023/20380, K. 2024/280 - 11.01.2024",
+      "relevance": "'+\"haklı fesih\" +\"haksız fesih\" +\"ihbar süresi\"' sorgusu icin Bedesten uzerinden bulunan karar.",
+      "confidence": 0.72,
+      "decision_date": "11.01.2024",
+      "decision_number": "E. 2023/20380, K. 2024/280",
+      "excerpt": "İlk Derece Mahkemesinin 10.11.2016 tarihli ve 2014/1533 Esas, 2016/404 Karar ... kararıyla; ... sözleşmesinin herhangi bir haklı fesih gerekçesine dayanılmadan ve davacıya ihbar süresi tanınmadan sonlandırıldığı, haksız fesih tazminatı ödenmesine ilişkin talebin reddi gerektiği, taraflar arasındaki ... sözleşmesinin belirsiz süreli ... sözleşmesi olduğu ve davacının bakiye süre ücreti tutarında tazminat ... bulunmadığı gerekçeleriyle davanın kısmen kabulüne karar verilmiştir.\nIV. İSTİNAF\nA. İstinaf Yoluna Başvuranlar\nİlk Derece Mahkemesinin yukarıda belirtilen kararına karşı süresi içinde taraf vekilleri istinaf başvurusunda bulunmuşlardır.\nB. Gerekçe ve Sonuç",
+      "url": "https://mevzuat.adalet.gov.tr/ictihat/1000244200",
+      "court": "Yargıtay"
+    },
+    {
+      "finding_id": "finding-3",
+      "finding_category": "payment_interest",
+      "source": "Yargi MCP / Bedesten",
+      "title": "9. Hukuk Dairesi - E. 2026/4596, K. 2026/4375 - 12.05.2026",
+      "relevance": "'+\"gecikme faizi\" +\"fahiş\" +\"aykırı\"' sorgusu icin Bedesten uzerinden bulunan karar.",
+      "confidence": 0.72,
+      "decision_date": "12.05.2026",
+      "decision_number": "E. 2026/4596, K. 2026/4375",
+      "excerpt": "3. Yabancı para borcuna hangi faizin uygulanacağı 3095 sayılı Kanunî Faiz ve Temerrüt Faizine İlişkin Kanun'un (3095 sayılı Kanun) \"Yabancı para borcunda faiz\" kenar başlıklı 4/a hükmünde düzenlenmiş olup ilgili düzenlemede; “Sözleşmede daha yüksek akdi veya gecikme faizi kararlaştırılmadığı hallerde, yabancı para borcunun faizinde Devlet Bankalarının o yabancı para ile açılmış bir yıl vadeli mevduat hesabına ödediği en yüksek faiz oranı uygulanır.” kuralına yer verilmiştir.\nSomut olayda uyuşmazlık konusu alacakların yabancı parayla tahsili talep edildiğinden hüküm altına alınan alacaklara, 3095 sayılı Kanun'un 4/a hükmü uyarınca Devlet bankalarınca ... Riyali (SAR) üzerinden açılmış bir yıllık vadeli mevduata uygulanan en yüksek faiz oranının uygulanması gerekir. Sözü edilen düzenleme gözetilmeksizin, infazda tereddüt yaratacak şekilde hüküm altına alınan alacaklar yönünden \"kamu bankalarının anılan yabancı parayla açılmış mevduatlara uyguladığı en yüksek mevduat faiziyle\" ibaresiyle faiz uygulanması diğer bir hatalı yöndür.\nVI. KARAR\nAçıklanan sebeplerle;\nTemyiz olunan Bölge Adliye Mahkemesi kararının BOZULMASINA,",
+      "url": "https://mevzuat.adalet.gov.tr/ictihat/1227198300",
+      "court": "Yargıtay"
+    },
+    {
+      "finding_id": "finding-4",
+      "finding_category": "intellectual_property",
+      "source": "Yargi MCP / Bedesten",
+      "title": "İstanbul 3. Fikri ve Sınai Haklar Hukuk Mahkemesi - E. 2023/103, K. 2026/165 - 14.07.2026",
+      "relevance": "'+\"fikri mülkiyet\" +\"hak devri\" +\"muvazaa\"' sorgusu icin Bedesten uzerinden bulunan karar.",
+      "confidence": 0.72,
+      "decision_date": "14.07.2026",
+      "decision_number": "E. 2023/103, K. 2026/165",
+      "excerpt": "Davacı vekili cevaba cevap dilekçesinde özetle; Dava konusu eserin müvekkil şirket çalışanları tarafından geliştirilmesi nedeniyle mali hakların FSEK ve TBK hükümleri uyarınca doğrudan müvekkil şirket üzerinde doğduğunu, bu nedenle eser sahipleri tarafından cayma hakkının kullanılamayacağını, davalıların cayma hakkını kullanabilmeleri için müvekkile ihtar çekerek münasip bir mehil vermeleri gerektiğini ancak bu şartın yerine getirilmediğini, FSEK 58. maddede düzenlenen mehil vermeme istisnalarının somut olayda mevcut olmadığını, müvekkilin dava konusu programı kullanmasının imkansız olmadığını ve hatta 01.03.2023 tarihli lisans sözleşmesi ile dava dışı ...A. Ş. ve ...A. Ş. şirketlerine kullanım hakkı verildiğini, müvekkilin yazılımı kullanmayı reddetmediğini, Covid-19 salgını nedeniyle süreçlerin aksadığını, davalılara yaklaşık 2.250.000 TL tutarında ödeme yapıldığını ve taraflar arasındaki sözleşmenin ani edimli olduğunu, dolayısıyla davalıların esaslı bir maddi zarara uğramadıklarını, dava konusu programın devrinden sonra geçen sürenin oldukça kısa olduğunu ve 2 yıllık referans süresinin dolmadığını, Yargıtay içtihatlarına göre mehil verilmeden yapılan cayma işleminin geçersiz ol",
+      "url": "https://mevzuat.adalet.gov.tr/ictihat/1221859300",
+      "court": "Yerel mahkeme"
+    }
+  ],
+  "limitations": [
+    "Precedent search covered only the 4 most severe of 5 findings.",
+    "Some Yargi MCP results had no excerpt and were deprioritized."
+  ],
+  "llm_engine": "gemini-3.5-flash-lite",
+  "yargi_source": "http://127.0.0.1:8001/mcp/"
+}
