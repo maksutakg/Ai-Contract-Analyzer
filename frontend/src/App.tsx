@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 
 import { analyzeContract } from "./api";
 import { Report } from "./components/Report";
+import { SourcePlate } from "./components/SourcePlate";
 import { UploadPanel } from "./components/UploadPanel";
 import { WaitingPanel } from "./components/WaitingPanel";
 import type { ContractReport, ContractType } from "./types";
@@ -31,17 +32,49 @@ export function App() {
   }
 
   return (
-    <div className="app">
-      <header className="masthead">
-        <h1>Sözleşme risk analizi</h1>
-        {state.kind === "done" && (
-          <button type="button" className="button-quiet" onClick={() => setState({ kind: "idle" })}>
-            Yeni sözleşme incele
-          </button>
-        )}
+    <div className="app-container">
+      <header className="top-nav">
+        <div className="top-nav-inner">
+          <div className="top-nav-brand">
+            <svg
+              className="top-nav-mark"
+              viewBox="0 0 40 40"
+              aria-hidden="true"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M20 6v28M12 34h16M6 12h28M6 12l-4 12M6 12l4 12M34 12l-4 12M34 12l4 12" />
+              <path d="M1 24q5 5 10 0zM29 24q5 5 10 0z" fill="currentColor" />
+              <circle cx="20" cy="5" r="2" />
+            </svg>
+            <span className="top-nav-title">Contract Risk Review</span>
+          </div>
+
+          <div className="top-nav-actions">
+            {state.kind === "done" && (
+              <button
+                type="button"
+                className="nav-pill-button"
+                onClick={() => setState({ kind: "idle" })}
+              >
+                Analyze another contract ↗
+              </button>
+            )}
+          </div>
+        </div>
       </header>
-      <main>
-        {state.kind === "idle" && <UploadPanel error={state.error} onSubmit={start} />}
+
+      <div className="app">
+        <main>
+        {state.kind === "idle" && (
+          <div className="landing">
+            <UploadPanel error={state.error} onSubmit={start} />
+            <SourcePlate />
+          </div>
+        )}
         {state.kind === "analyzing" && (
           <WaitingPanel
             fileName={state.fileName}
@@ -51,6 +84,7 @@ export function App() {
         )}
         {state.kind === "done" && <Report fileName={state.fileName} report={state.report} />}
       </main>
+      </div>
     </div>
   );
 }

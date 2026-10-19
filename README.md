@@ -4,9 +4,9 @@ This project is an AI-powered smart contract analysis system that detects risks 
 
 ## Features
 
-*   **Contract Summary:** High-level summary of key contract terms (parties, purpose, duration, price, payment, IP, and termination) in Turkish using LLMs.
+*   **Contract Summary:** High-level summary of key contract terms (parties, purpose, duration, price, payment, IP, and termination) in English using LLMs.
 *   **Segmentation:** Automatic clause-by-clause segmentation of the contract text.
-*   **Risk Analysis:** Detects legal risks and compliance issues (e.g. data protection, termination, intellectual property, penalty clauses) in Turkish with resolution recommendations.
+*   **Risk Analysis:** Detects legal risks and compliance issues in Turkish contracts (e.g. data protection, termination, intellectual property, penalty clauses) and explains each with a recommendation, in English.
 *   **Dynamic Querying:** Dynamically generates optimized Turkish search queries based on identified risks using the LLM.
 *   **Legal Precedent Retrieval (CRAG):** Integrates with a live Yargı MCP server to search and fetch relevant legal precedents (Court of Cassation, Council of State, KVKK) based on dynamic queries.
 *   **Advanced Filtering:** Filters out irrelevant or empty search results using diacritics-insensitive (Turkish character normalized) checks.
@@ -111,7 +111,7 @@ curl -X POST "http://localhost:8000/api/v1/contracts/analyze" \
 
 The analysis report returns a JSON payload with the following fields:
 
-*   **`contract_summary`** (string): High-level Turkish legal summary of the contract.
+*   **`contract_summary`** (string): High-level English summary of the Turkish contract.
 *   **`risk_score`** (integer): Calculated overall risk score of the contract (0-100).
 *   **`risk_level`** (string): Overall risk classification (`low`, `medium`, `high`, `critical`).
 *   **`clauses`** (array): Extracted list of clauses containing `id`, `title`, and `text`.
@@ -119,8 +119,8 @@ The analysis report returns a JSON payload with the following fields:
     *   `id`: Finding identifier.
     *   `category`: Risk category (e.g., `data_protection`, `intellectual_property`, `termination`, `penalty_clause`).
     *   `severity`: Risk severity level.
-    *   `explanation`: Explanation of the risk in Turkish.
-    *   `recommendation`: Actionable advice in Turkish.
+    *   `explanation`: Explanation of the risk in English.
+    *   `recommendation`: Actionable advice in English.
     *   `clause_id`: Referenced clause ID.
 *   **`recommended_actions`** (array of strings): Quick action list for contract redlines.
 *   **`related_decisions`** (array): Precedent legal decisions matched on Yargı MCP (source, title, excerpt, and URL).

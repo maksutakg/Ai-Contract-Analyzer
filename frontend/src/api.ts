@@ -9,10 +9,10 @@ export class AnalysisError extends Error {}
 export function checkFile(file: File): string | null {
   const name = file.name.toLowerCase();
   if (!ACCEPTED_EXTENSIONS.some((extension) => name.endsWith(extension))) {
-    return "Yalnız PDF ve DOCX dosyaları incelenebilir.";
+    return "Only PDF and DOCX files can be analyzed.";
   }
   if (file.size > MAX_UPLOAD_BYTES) {
-    return "Dosya 10 MB'tan büyük. Daha küçük bir dosya seçin.";
+    return "The file is larger than 10 MB. Choose a smaller file.";
   }
   return null;
 }
@@ -32,7 +32,7 @@ export async function analyzeContract(
   } catch (error) {
     if (signal.aborted) throw error;
     throw new AnalysisError(
-      "Analiz sunucusuna ulaşılamadı. Sunucunun çalıştığından emin olun (uv run python main.py).",
+      "The analysis server did not respond. Make sure it is running (start.cmd).",
     );
   }
   if (!response.ok) throw new AnalysisError(await errorMessage(response));
@@ -40,7 +40,7 @@ export async function analyzeContract(
 }
 
 async function errorMessage(response: Response): Promise<string> {
-  const fallback = `Analiz tamamlanamadı (HTTP ${response.status}).`;
+  const fallback = `The analysis could not be completed (HTTP ${response.status}).`;
   try {
     const { detail } = await response.json();
     if (typeof detail?.message === "string") return detail.message;

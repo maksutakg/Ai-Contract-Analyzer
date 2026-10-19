@@ -1,14 +1,12 @@
 import { useState, type DragEvent, type FormEvent } from "react";
 
 import { checkFile } from "../api";
-import { SEARCHED_SOURCES } from "../labels";
 import type { ContractType } from "../types";
-import { JusticeStatue } from "./JusticeStatue";
 
 const CONTRACT_TYPES: { value: ContractType | ""; label: string }[] = [
-  { value: "", label: "Belirtmeyeceğim" },
-  { value: "service", label: "Hizmet sözleşmesi" },
-  { value: "lease", label: "Kira sözleşmesi" },
+  { value: "", label: "Not specified" },
+  { value: "service", label: "Service agreement" },
+  { value: "lease", label: "Lease agreement" },
 ];
 
 interface Props {
@@ -42,22 +40,11 @@ export function UploadPanel({ error, onSubmit }: Props) {
 
   return (
     <form className="upload" onSubmit={submit}>
-      <div className="hero">
-        <JusticeStatue className="statue" />
-        <h2 className="hero-title">Sözleşmedeki riskleri emsal kararlarla birlikte görün</h2>
-        <p className="lede">
-          Her madde risk açısından incelenir; bulunan her risk için mahkeme ve kurul kararları
-          canlı olarak aranır ve gerekçesiyle maddenin yanına konur.
-        </p>
-        <div className="sources">
-          <p className="sources-label">Yargı MCP üzerinden aranan kaynaklar</p>
-          <ul className="sources-list">
-            {SEARCHED_SOURCES.map((source) => (
-              <li key={source}>{source}</li>
-            ))}
-          </ul>
-        </div>
-      </div>
+      <h2 className="upload-title">See each risk in a contract next to the case law on it</h2>
+      <p className="lede">
+        Every clause is checked for legal risk. For each risk, court and authority decisions are
+        searched live and set beside the clause with the reasoning that applies.
+      </p>
 
       <label
         className={`sheet dropzone${dragging ? " is-dragging" : ""}${file ? " has-file" : ""}`}
@@ -71,19 +58,19 @@ export function UploadPanel({ error, onSubmit }: Props) {
         <input
           type="file"
           accept=".pdf,.docx"
-          aria-label="Sözleşme dosyası seç"
+          aria-label="Choose contract file"
           className="visually-hidden"
           onChange={(event) => choose(event.target.files?.[0])}
         />
         {file ? (
           <>
             <span className="dropzone-title">{file.name}</span>
-            <span className="dropzone-hint">Başka bir dosya seçmek için tıklayın ya da sürükleyin.</span>
+            <span className="dropzone-hint">Click or drop to choose a different file.</span>
           </>
         ) : (
           <>
-            <span className="dropzone-title">Sözleşmeyi buraya bırakın</span>
-            <span className="dropzone-hint">ya da tıklayıp dosya seçin. PDF veya DOCX, en fazla 10 MB.</span>
+            <span className="dropzone-title">Drop the contract here</span>
+            <span className="dropzone-hint">or click to choose a file. PDF or DOCX, up to 10 MB.</span>
           </>
         )}
       </label>
@@ -95,7 +82,7 @@ export function UploadPanel({ error, onSubmit }: Props) {
       )}
 
       <fieldset className="contract-type">
-        <legend>Sözleşme türü</legend>
+        <legend>Contract type</legend>
         {CONTRACT_TYPES.map((option) => (
           <label key={option.value} className="choice">
             <input
@@ -111,10 +98,10 @@ export function UploadPanel({ error, onSubmit }: Props) {
       </fieldset>
 
       <button type="submit" className="button-primary" disabled={!file}>
-        Analizi başlat
+        Analyze contract
       </button>
       <p className="fineprint">
-        Deneme için proje klasöründeki <code>samples</code> dizininde iki örnek sözleşme var.
+        Two sample contracts are in the project's <code>samples</code> folder.
       </p>
     </form>
   );

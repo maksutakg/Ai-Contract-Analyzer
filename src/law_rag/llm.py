@@ -117,9 +117,9 @@ def normalize_risk_findings(findings: list[RiskFinding]) -> list[RiskFinding]:
 
 class FakeContractAnalyzer:
     async def summarize_contract(self, text: str, contract_type: str | None = None) -> str:
-        prefix = f"{contract_type} sozlesmesi" if contract_type else "Sozlesme"
+        prefix = f"{contract_type.capitalize()} agreement" if contract_type else "Contract"
         excerpt = text[:240].strip()
-        return f"{prefix} icin MVP ozet: {excerpt}"
+        return f"{prefix}, opening text: {excerpt}"
 
     async def segment_clauses(self, text: str) -> list[Clause]:
         lines = [line.strip() for line in text.splitlines() if line.strip()]
@@ -214,8 +214,8 @@ class FakeContractAnalyzer:
                     clause=clause,
                     category="cash_payment",
                     severity="medium",
-                    explanation="Kira bedelinin elden odenmesi ispat ve mevzuata uyum riski dogurabilir.",
-                    recommendation="Kira odemelerini banka kanaliyla ve aciklama bilgisiyle yapilacak sekilde duzenleyin.",
+                    explanation="Paying rent in cash makes payment hard to prove and may breach rules requiring bank transfers.",
+                    recommendation="Require rent to be paid by bank transfer with a payment reference.",
                     confidence=0.86,
                 )
             if "tadilat" in lowered and "depozito" in lowered and "iade edilmez" in lowered:
@@ -223,8 +223,8 @@ class FakeContractAnalyzer:
                     clause=clause,
                     category="deposit_forfeiture",
                     severity="high",
-                    explanation="Tadilat halinde depozitonun otomatik iade edilmemesi orantisiz yaptirim riski tasir.",
-                    recommendation="Depozito kesintisini gercek zarar, belge ve mahsup prosedurune baglayin.",
+                    explanation="Forfeiting the whole deposit for any alteration is a disproportionate penalty.",
+                    recommendation="Limit deductions to documented actual damage and set out how they are offset.",
                     confidence=0.9,
                 )
             if ("fesih" in lowered or "feshedilir" in lowered or "terminate" in lowered) and (
@@ -234,8 +234,8 @@ class FakeContractAnalyzer:
                     clause=clause,
                     category="termination",
                     severity="high",
-                    explanation="Derhal veya tek tarafli fesih hukmu manuel inceleme gerektirir.",
-                    recommendation="Fesih sebeplerini, bildirim suresini ve telafi hakkini netlestirin.",
+                    explanation="An immediate or one-sided termination right needs manual review.",
+                    recommendation="Specify termination grounds, a notice period and a right to cure.",
                     confidence=0.9,
                 )
             elif "fesih" in lowered or "terminate" in lowered:
@@ -243,8 +243,8 @@ class FakeContractAnalyzer:
                     clause=clause,
                     category="termination",
                     severity="medium",
-                    explanation="Fesih hukmu taraf dengesi ve bildirim kosullari acisindan incelenmelidir.",
-                    recommendation="Fesih prosedurunu, sureleri ve sonuclari acik hale getirin.",
+                    explanation="Review the termination clause for balance between the parties and notice terms.",
+                    recommendation="Make the termination procedure, deadlines and consequences explicit.",
                     confidence=0.72,
                 )
             if "cezai sart" in lowered or "penalty" in lowered:
@@ -252,8 +252,8 @@ class FakeContractAnalyzer:
                     clause=clause,
                     category="penalty_clause",
                     severity="medium",
-                    explanation="Cezai sart/penalty hukmu orantililik acisindan incelenmelidir.",
-                    recommendation="Cezai sart tutarini, ust siniri ve uygulanma kosullarini kontrol edin.",
+                    explanation="Check the penalty clause for proportionality.",
+                    recommendation="Review the penalty amount, its cap and when it applies.",
                     confidence=0.85,
                 )
             if (
@@ -263,8 +263,8 @@ class FakeContractAnalyzer:
                     clause=clause,
                     category="unlawful_entry",
                     severity="critical",
-                    explanation="Kiracinin izni olmadan konuta giris hakki konut dokunulmazligi ve ozel hayat riski dogurur.",
-                    recommendation="Giris hakkini onceden bildirim, makul saat ve kiraci onayi sartlarina baglayin.",
+                    explanation="A right to enter the home without the tenant's consent infringes the inviolability of the home and privacy.",
+                    recommendation="Allow entry only with prior notice, at reasonable hours and with the tenant's consent.",
                     confidence=0.95,
                 )
             if "tahliye taahhudu" in lowered or "tahliye taahhut" in lowered:
@@ -272,8 +272,8 @@ class FakeContractAnalyzer:
                     clause=clause,
                     category="eviction_undertaking",
                     severity="high",
-                    explanation="Tahliye taahhudunun sozlesme ile birlikte alinmasi gecerlilik tartismasi yaratabilir.",
-                    recommendation="Tahliye taahhudunu sozlesme tarihinden sonra, serbest iradeyi gosterecek sekilde ayri degerlendirin.",
+                    explanation="An eviction undertaking signed together with the lease may be held invalid.",
+                    recommendation="Obtain any eviction undertaking separately, after the lease date, so it reflects free will.",
                     confidence=0.88,
                 )
             if ("%100" in lowered or "100 oraninda" in lowered) and (
@@ -283,8 +283,8 @@ class FakeContractAnalyzer:
                     clause=clause,
                     category="rent_increase",
                     severity="high",
-                    explanation="Yillik %100 kira artisi yasal artis sinirlariyla uyumsuz olabilir.",
-                    recommendation="Artis oranini uygulanabilir yasal sinir ve endekslerle uyumlu hale getirin.",
+                    explanation="A 100% annual rent increase may exceed the statutory cap.",
+                    recommendation="Tie the increase to the statutory cap and the applicable price index.",
                     confidence=0.92,
                 )
             if "ankara mahkemeleri" in lowered and (
@@ -294,8 +294,8 @@ class FakeContractAnalyzer:
                     clause=clause,
                     category="jurisdiction",
                     severity="medium",
-                    explanation="Tasinmaz Istanbul'dayken Ankara mahkemelerinin yetkili secilmesi yetki itirazi riski yaratabilir.",
-                    recommendation="Yetki maddesini tasinmazin bulundugu yer ve zorunlu yetki kurallari acisindan kontrol edin.",
+                    explanation="Naming Ankara courts for a property in Istanbul invites a jurisdiction objection.",
+                    recommendation="Check the clause against mandatory jurisdiction rules for the property's location.",
                     confidence=0.76,
                 )
         return findings
@@ -434,7 +434,7 @@ class GeminiContractAnalyzer:
 
     async def summarize_contract(self, text: str, contract_type: str | None = None) -> str:
         prompt = (
-            "Summarize this contract in Turkish for a legal reviewer. "
+            "Summarize this Turkish contract in English for a legal reviewer. "
             "Use 120-180 words and at most 5 bullets. "
             "Identify only the contract purpose, parties, duration, price, payment, IP, termination, "
             "and dispute resolution if present. "
@@ -447,7 +447,7 @@ class GeminiContractAnalyzer:
         prompt += text[:SUMMARY_TEXT_LIMIT]
 
         try:
-            return (await self._generate(prompt)).strip() or "Ozet uretilemedi."
+            return (await self._generate(prompt)).strip() or "No summary was produced."
         except Exception:
             self._note(SUMMARY_FALLBACK_LIMITATION)
             return await self._fallback.summarize_contract(text, contract_type)
@@ -539,8 +539,8 @@ class GeminiContractAnalyzer:
             "category, severity, explanation, recommendation, confidence, clause_id. "
             "Return at most 6 findings. Prefer material legal risks only. "
             "Keep explanation under 240 characters and recommendation under 240 characters. "
-            "Write the explanation and recommendation fields in Turkish with correct Turkish characters "
-            "(ç, ğ, ı, İ, ö, ş, ü); never transliterate them to ASCII. "
+            "Write the explanation and recommendation fields in English; keep Turkish legal terms "
+            "and names with their correct Turkish characters (ç, ğ, ı, İ, ö, ş, ü). "
             "category must be one of cash_payment, deposit_forfeiture, termination, penalty_clause, "
             "unlawful_entry, eviction_undertaking, rent_increase, jurisdiction, data_protection, "
             "intellectual_property, force_majeure, payment_interest, "

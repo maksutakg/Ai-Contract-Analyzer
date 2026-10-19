@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 
-import { SEARCHED_SOURCES, SEVERITY_LABEL, SEVERITY_ORDER, categoryLabel, limitationLabel } from "../labels";
+import { SEVERITY_LABEL, SEVERITY_ORDER, categoryLabel } from "../labels";
+import { courtName } from "../sources";
 import type { Clause, ContractReport, RiskFinding, Severity, YargiDecision } from "../types";
 
 const EXCERPT_PREVIEW_CHARS = 320;
@@ -26,16 +27,16 @@ export function Report({ fileName, report }: Props) {
 
   return (
     <div className="report">
-      <aside className="verdict" aria-label="Sonuç">
+      <aside className="verdict" aria-label="Result">
         <p className="verdict-file">{fileName}</p>
         <p className={`verdict-level tone-${report.risk_level}`}>
           {SEVERITY_LABEL[report.risk_level]} risk
         </p>
-        <p className="verdict-score">Risk puanı {report.risk_score} / 100</p>
+        <p className="verdict-score">Risk score {report.risk_score} of 100</p>
 
-        <h2 className="verdict-heading">Riskler</h2>
+        <h2 className="verdict-heading">Risks</h2>
         {report.findings.length === 0 ? (
-          <p className="muted">Bu sözleşmede risk tespit edilmedi.</p>
+          <p className="muted">No risks were found in this contract.</p>
         ) : (
           <ul className="verdict-findings">
             {sortBySeverity(report.findings).map((finding) => (
@@ -49,36 +50,36 @@ export function Report({ fileName, report }: Props) {
           </ul>
         )}
 
-        <h2 className="verdict-heading">Analizi yapanlar</h2>
+        {!report.yargi_source.startsWith("fake") && <CaseLawTally decisions={report.related_decisions} />}
+
+        <h2 className="verdict-heading">How this report was made</h2>
         <EngineStatus report={report} />
 
         {report.limitations.length > 0 && (
           <>
-            <h2 className="verdict-heading">Bu raporun sınırları</h2>
+            <h2 className="verdict-heading">Limits of this report</h2>
             <ul className="limitations">
               {report.limitations.map((limitation) => (
-                <li key={limitation}>{limitationLabel(limitation)}</li>
+                <li key={limitation}>{limitation}</li>
               ))}
             </ul>
           </>
         )}
 
         <p className="caution">
-          Bu rapor bir ön incelemedir. Risk değerlendirmeleri, madde atıfları ve emsal kararlar bir
-          hukukçu tarafından kontrol edilmelidir.
+          This is a first review, not legal advice. A lawyer should check the risk assessments, any
+          statutory references and the decisions cited.
         </p>
       </aside>
 
       <div className="reading">
-        {!report.yargi_source.startsWith("fake") && <SourceSeals decisions={report.related_decisions} />}
-
         <section className="summary" aria-labelledby="summary-heading">
-          <h2 id="summary-heading">Özet</h2>
+          <h2 id="summary-heading">Summary</h2>
           <SummaryText text={report.contract_summary} />
         </section>
 
         <section aria-labelledby="document-heading">
-          <h2 id="document-heading">Sözleşme ve notlar</h2>
+          <h2 id="document-heading">Contract and notes</h2>
           <div className="document">
             {report.clauses.map((clause) => (
               <ClauseRow
@@ -93,7 +94,7 @@ export function Report({ fileName, report }: Props) {
 
         {unplaced.length > 0 && (
           <section aria-labelledby="general-heading">
-            <h2 id="general-heading">Belirli bir maddeye bağlanamayan riskler</h2>
+            <h2 id="general-heading">Risks not tied to a single clause</h2>
             <div className="margin-standalone">
               {unplaced.map((finding) => (
                 <Note key={finding.id} finding={finding} decisions={decisionsByFinding.get(finding.id) ?? []} />
@@ -140,7 +141,7 @@ function Note({ finding, decisions }: { finding: RiskFinding; decisions: YargiDe
       </p>
       <p className="note-text">{finding.explanation}</p>
       <p className="note-advice">
-        <span className="note-advice-label">Öneri: </span>
+        <span className="note-advice-label">Recommendation: </span>
         {finding.recommendation}
       </p>
       {decisions.map((decision) => (
@@ -159,19 +160,19 @@ function Precedent({ decision }: { decision: YargiDecision }) {
   return (
     <figure className="precedent">
       <figcaption>
-        <span className="precedent-label">{decision.court ? `Dayanak: ${decision.court} kararı` : "Dayanak karar"}</span>
+        <span className="precedent-label">{courtName(decision.court)}</span>
         <span className="precedent-title">{decision.title}</span>
       </figcaption>
       {excerpt && <blockquote className="precedent-excerpt">{shown}</blockquote>}
       <p className="precedent-actions">
         {long && (
           <button type="button" className="link-button" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
-            {expanded ? "Alıntıyı kısalt" : "Alıntının tamamını göster"}
+            {expanded ? "Show less" : "Show the full excerpt"}
           </button>
         )}
         {decision.url && (
           <a href={decision.url} target="_blank" rel="noopener noreferrer">
-            Kararın kaynağını aç
+            Open the decision
           </a>
         )}
       </p>
@@ -179,31 +180,28 @@ function Precedent({ decision }: { decision: YargiDecision }) {
   );
 }
 
-function SourceSeals({ decisions }: { decisions: YargiDecision[] }) {
+function CaseLawTally({ decisions }: { decisions: YargiDecision[] }) {
   const counts = new Map<string, number>();
   for (const decision of decisions) {
-    const court = decision.court ?? "Diğer";
-    counts.set(court, (counts.get(court) ?? 0) + 1);
+    const name = courtName(decision.court);
+    counts.set(name, (counts.get(name) ?? 0) + 1);
   }
   return (
-    <section className="seals" aria-labelledby="seals-heading">
-      <h2 id="seals-heading">Bu rapordaki emsal kararlar</h2>
+    <>
+      <h2 className="verdict-heading">Case law cited</h2>
       {counts.size > 0 ? (
-        <ul className="seal-list">
-          {[...counts].map(([court, count]) => (
-            <li key={court} className="seal">
-              <span className="seal-count">{count}</span>
-              <span className="seal-name">{court}</span>
-            </li>
+        <dl className="tally">
+          {[...counts].map(([name, count]) => (
+            <div key={name}>
+              <dt>{name}</dt>
+              <dd>{count}</dd>
+            </div>
           ))}
-        </ul>
+        </dl>
       ) : (
-        <p className="muted">Bu analizde risklerle yeterince ilgili emsal karar bulunamadı.</p>
+        <p className="muted">No decision was close enough to these risks to cite.</p>
       )}
-      <p className="seals-note">
-        Yargı MCP üzerinden canlı aranan kaynaklar: {SEARCHED_SOURCES.join(", ")}.
-      </p>
-    </section>
+    </>
   );
 }
 
@@ -213,12 +211,12 @@ function EngineStatus({ report }: { report: ContractReport }) {
   return (
     <dl className="engines">
       <div className={rules ? "engine is-degraded" : "engine"}>
-        <dt>Risk değerlendirmesi</dt>
-        <dd>{rules ? "Kural tabanlı (yapay zekâ kullanılmadı)" : `Yapay zekâ, ${report.llm_engine}`}</dd>
+        <dt>Risk assessment</dt>
+        <dd>{rules ? "Rule-based checks (no AI model was used)" : `AI model ${report.llm_engine}`}</dd>
       </div>
       <div className={fake ? "engine is-degraded" : "engine"}>
-        <dt>Emsal kararlar</dt>
-        <dd>{fake ? "Örnek veri (gerçek arama yapılmadı)" : "Yargı MCP, canlı arama"}</dd>
+        <dt>Case law</dt>
+        <dd>{fake ? "Sample data (no live search was made)" : "Live search through Yargı MCP"}</dd>
       </div>
     </dl>
   );

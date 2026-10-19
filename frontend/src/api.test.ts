@@ -30,7 +30,7 @@ describe("analyzeContract", () => {
 
     const error = await analyzeContract(file, "", new AbortController().signal).catch((e) => e);
     expect(error).toBeInstanceOf(AnalysisError);
-    expect(error.message).toContain("ulaşılamadı");
+    expect(error.message).toContain("did not respond");
   });
 
   it("sends contract_type only when chosen", async () => {
@@ -48,7 +48,7 @@ describe("analyzeContract", () => {
 describe("checkFile", () => {
   it("accepts pdf and docx, rejects others and oversized files", () => {
     expect(checkFile(new File(["x"], "a.PDF"))).toBeNull();
-    expect(checkFile(new File(["x"], "a.txt"))).toContain("PDF ve DOCX");
+    expect(checkFile(new File(["x"], "a.txt"))).toContain("PDF and DOCX");
     const big = new File(["x"], "a.docx");
     Object.defineProperty(big, "size", { value: 11 * 1024 * 1024 });
     expect(checkFile(big)).toContain("10 MB");

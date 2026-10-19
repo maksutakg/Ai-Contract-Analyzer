@@ -23,12 +23,12 @@ describe("Report", () => {
     expect(within(row).getByText(decision.title)).toBeTruthy();
   });
 
-  it("shows which engines ran and translates limitations", () => {
+  it("shows which engines ran and the limitations", () => {
     render(<Report fileName="x.docx" report={report} />);
 
-    expect(screen.getByText(`Yapay zekâ, ${report.llm_engine}`)).toBeTruthy();
-    expect(screen.getByText("Yargı MCP, canlı arama")).toBeTruthy();
-    expect(screen.getByText("Emsal karar yalnız en ciddi 4 risk için arandı (toplam 5).")).toBeTruthy();
+    expect(screen.getByText(`AI model ${report.llm_engine}`)).toBeTruthy();
+    expect(screen.getByText("Live search through Yargı MCP")).toBeTruthy();
+    expect(screen.getByText("Precedent search covered only the 4 most severe of 5 findings.")).toBeTruthy();
   });
 
   it("flags rule-based analysis and sample precedents", () => {
@@ -39,24 +39,24 @@ describe("Report", () => {
       />,
     );
 
-    expect(screen.getByText("Kural tabanlı (yapay zekâ kullanılmadı)")).toBeTruthy();
-    expect(screen.getByText("Örnek veri (gerçek arama yapılmadı)")).toBeTruthy();
+    expect(screen.getByText("Rule-based checks (no AI model was used)")).toBeTruthy();
+    expect(screen.getByText("Sample data (no live search was made)")).toBeTruthy();
   });
 
   it("keeps findings without a matching clause and survives no precedents", () => {
-    const orphan = { ...report.findings[0], id: "finding-x", clause_id: null, explanation: "Maddeye bağlanamayan risk" };
+    const orphan = { ...report.findings[0], id: "finding-x", clause_id: null, explanation: "Risk without a clause" };
     render(<Report fileName="x.docx" report={{ ...report, findings: [orphan], related_decisions: [] }} />);
 
-    const section = screen.getByRole("heading", { name: "Belirli bir maddeye bağlanamayan riskler" }).parentElement!;
-    expect(within(section).getByText("Maddeye bağlanamayan risk")).toBeTruthy();
+    const section = screen.getByRole("heading", { name: "Risks not tied to a single clause" }).parentElement!;
+    expect(within(section).getByText("Risk without a clause")).toBeTruthy();
   });
 
-  it("names the issuing institution and stamps a seal per institution", () => {
+  it("names the issuing institution on each precedent and tallies them", () => {
     render(<Report fileName="x.docx" report={report} />);
 
-    expect(screen.getAllByText("Dayanak: Yargıtay kararı")).toHaveLength(3);
-    const seals = screen.getByRole("heading", { name: "Bu rapordaki emsal kararlar" }).parentElement!;
-    expect(within(seals).getByText("Yargıtay").previousSibling?.textContent).toBe("3");
-    expect(within(seals).getByText("Yerel mahkeme").previousSibling?.textContent).toBe("1");
+    const tally = screen.getByRole("heading", { name: "Case law cited" }).nextElementSibling!;
+    expect(within(tally as HTMLElement).getByText("Court of Cassation (Yargıtay)").nextElementSibling?.textContent).toBe("3");
+    expect(within(tally as HTMLElement).getByText("First-instance courts").nextElementSibling?.textContent).toBe("1");
+    expect(document.querySelectorAll(".precedent-label")).toHaveLength(4);
   });
 });
