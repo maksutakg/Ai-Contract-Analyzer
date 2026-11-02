@@ -1,32 +1,91 @@
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
 
+from .auth import AuthError, AuthStore
 from .config import Settings
 from .document_loader import DocumentLoadError, load_contract_text
 from .graph import analyze_contract
 from .llm import FakeContractAnalyzer, GeminiContractAnalyzer
-from .models import ContractReport, ContractType
+from .models import (
+    AuthCredentialsRequest,
+    AuthSessionResponse,
+    ContractReport,
+    ContractType,
+    UserResponse,
+)
 from .yargi_client import FakeYargiClient, RemoteYargiMcpClient
 
 
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
 
-def create_app(use_fake_clients: bool = False, frontend_dist: Path = FRONTEND_DIST) -> FastAPI:
+def create_app(
+    use_fake_clients: bool = False,
+    frontend_dist: Path = FRONTEND_DIST,
+    auth_db_path: Path | None = None,
+) -> FastAPI:
     app_settings = Settings()
+    auth_store = AuthStore(
+        db_path=auth_db_path or app_settings.auth_db_path,
+        secret_key=app_settings.auth_secret_key,
+        token_ttl_seconds=app_settings.auth_token_ttl_seconds,
+    )
     app = FastAPI(title="Law RAG MVP")
+
+    def require_current_user(authorization: str | None = Header(default=None)) -> UserResponse:
+        if not authorization or not authorization.lower().startswith("bearer "):
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "code": "authentication_required",
+                    "message": "Authentication is required. Please sign in.",
+                },
+            )
+        token = authorization[7:].strip()
+        try:
+            return auth_store.verify_token(token)
+        except AuthError as exc:
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail={"code": exc.code, "message": exc.message},
+            ) from exc
 
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.post("/api/v1/auth/register", status_code=201, response_model=AuthSessionResponse)
+    async def register_endpoint(payload: AuthCredentialsRequest) -> AuthSessionResponse:
+        try:
+            return auth_store.register_user(payload.email, payload.password)
+        except AuthError as exc:
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail={"code": exc.code, "message": exc.message},
+            ) from exc
+
+    @app.post("/api/v1/auth/login", response_model=AuthSessionResponse)
+    async def login_endpoint(payload: AuthCredentialsRequest) -> AuthSessionResponse:
+        try:
+            return auth_store.authenticate_user(payload.email, payload.password)
+        except AuthError as exc:
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail={"code": exc.code, "message": exc.message},
+            ) from exc
+
+    @app.get("/api/v1/auth/me", response_model=UserResponse)
+    async def me_endpoint(current_user: UserResponse = Depends(require_current_user)) -> UserResponse:
+        return current_user
 
     @app.post("/api/v1/contracts/analyze", response_model=ContractReport)
     async def analyze_endpoint(
         file: UploadFile = File(...),
         # Not "ContractType | None": that becomes anyOf, which Swagger renders as a free-text box prefilled with "string".
         contract_type: ContractType = Form(default=None),
+        _current_user: UserResponse = Depends(require_current_user),
     ):
         content = await file.read()
         if len(content) > app_settings.max_upload_bytes:

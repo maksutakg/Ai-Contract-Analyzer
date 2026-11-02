@@ -1,4 +1,5 @@
 import base64
+import contextlib
 from datetime import datetime, timezone
 import hashlib
 import hmac
@@ -78,7 +79,7 @@ class AuthStore:
         return conn
 
     def _init_db(self) -> None:
-        with self._connect() as conn:
+        with contextlib.closing(self._connect()) as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS users (
@@ -125,7 +126,7 @@ class AuthStore:
         created_at = datetime.now(timezone.utc).isoformat()
 
         try:
-            with self._connect() as conn:
+            with contextlib.closing(self._connect()) as conn:
                 cursor = conn.execute(
                     "INSERT INTO users (email, password_hash, created_at) VALUES (?, ?, ?)",
                     (normalized_email, password_hash, created_at),
@@ -144,7 +145,7 @@ class AuthStore:
 
     def authenticate_user(self, email: str, password: str) -> AuthSessionResponse:
         normalized_email = email.strip().lower()
-        with self._connect() as conn:
+        with contextlib.closing(self._connect()) as conn:
             row = conn.execute(
                 "SELECT id, email, password_hash FROM users WHERE email = ?",
                 (normalized_email,),
@@ -188,7 +189,7 @@ class AuthStore:
                 status_code=401,
             )
 
-        with self._connect() as conn:
+        with contextlib.closing(self._connect()) as conn:
             row = conn.execute(
                 "SELECT id, email FROM users WHERE id = ?",
                 (user_id,),

@@ -1,4 +1,6 @@
 from io import BytesIO
+from pathlib import Path
+import tempfile
 
 from docx import Document
 from fastapi.testclient import TestClient
@@ -16,12 +18,21 @@ def docx_bytes(*lines: str) -> bytes:
 
 
 def post_contract(data: dict[str, str]):
-    client = TestClient(create_app(use_fake_clients=True))
-    return client.post(
-        "/api/v1/contracts/analyze",
-        files={"file": ("c.docx", docx_bytes("MADDE 1 - FESIH", "Taraflar derhal fesih hakkina sahiptir."))},
-        data=data,
-    )
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        client = TestClient(
+            create_app(use_fake_clients=True, auth_db_path=Path(tmp_dir) / "users.db")
+        )
+        reg = client.post(
+            "/api/v1/auth/register",
+            json={"email": "test@example.com", "password": "password123"},
+        )
+        token = reg.json()["token"]
+        return client.post(
+            "/api/v1/contracts/analyze",
+            files={"file": ("c.docx", docx_bytes("MADDE 1 - FESIH", "Taraflar derhal fesih hakkina sahiptir."))},
+            data=data,
+            headers={"Authorization": f"Bearer {token}"},
+        )
 
 
 def test_contract_type_is_optional_and_report_names_backends() -> None:
@@ -39,14 +50,18 @@ def test_contract_type_rejects_values_outside_the_list() -> None:
 
 def test_built_frontend_is_served_next_to_the_api(tmp_path) -> None:
     (tmp_path / "index.html").write_text("<html><body>arayuz</body></html>", encoding="utf-8")
-    client = TestClient(create_app(use_fake_clients=True, frontend_dist=tmp_path))
+    client = TestClient(
+        create_app(use_fake_clients=True, frontend_dist=tmp_path, auth_db_path=tmp_path / "users.db")
+    )
 
     assert "arayuz" in client.get("/").text
     assert client.get("/health").json() == {"status": "ok"}
 
 
 def test_api_works_without_a_built_frontend(tmp_path) -> None:
-    client = TestClient(create_app(use_fake_clients=True, frontend_dist=tmp_path / "missing"))
+    client = TestClient(
+        create_app(use_fake_clients=True, frontend_dist=tmp_path / "missing", auth_db_path=tmp_path / "users.db")
+    )
 
     assert client.get("/").status_code == 404
     assert client.get("/health").status_code == 200
