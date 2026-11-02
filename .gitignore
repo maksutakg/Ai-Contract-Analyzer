@@ -14,3 +14,7 @@ node_modules/
 *.tsbuildinfo
 logs/
 frontend/dist/
+
+data/
+*.db
+.superpowers/

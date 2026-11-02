@@ -67,3 +67,18 @@ class ContractAnalysisState(BaseModel):
     recommended_actions: list[str] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
     report: ContractReport | None = None
+
+
+class AuthCredentialsRequest(BaseModel):
+    email: str
+    password: str
+
+
+class UserResponse(BaseModel):
+    id: int
+    email: str
+
+
+class AuthSessionResponse(BaseModel):
+    token: str
+    user: UserResponse

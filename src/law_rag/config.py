@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -32,6 +34,12 @@ class Settings(BaseSettings):
     )
     app_port: int = Field(default=8000, validation_alias="APP_PORT")
     max_upload_bytes: int = Field(default=10 * 1024 * 1024, validation_alias="MAX_UPLOAD_BYTES")
+    auth_db_path: Path = Field(default=Path("data/users.db"), validation_alias="AUTH_DB_PATH")
+    auth_secret_key: str = Field(
+        default="dev-local-auth-secret-change-in-prod",
+        validation_alias="AUTH_SECRET_KEY",
+    )
+    auth_token_ttl_seconds: int = Field(default=86400, validation_alias="AUTH_TOKEN_TTL_SECONDS")
 
 
 settings = Settings()
