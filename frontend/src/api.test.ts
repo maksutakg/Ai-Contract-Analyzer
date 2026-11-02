@@ -1,6 +1,18 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+// @vitest-environment jsdom
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { AnalysisError, analyzeContract, checkFile } from "./api";
+import {
+  AnalysisError,
+  AuthenticationError,
+  analyzeContract,
+  checkFile,
+  clearStoredToken,
+  fetchCurrentUser,
+  getStoredToken,
+  loginUser,
+  registerUser,
+  setStoredToken,
+} from "./api";
 
 function respond(status: number, body: unknown) {
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(body), { status })));
@@ -8,7 +20,44 @@ function respond(status: number, body: unknown) {
 
 const file = new File(["x"], "s.docx");
 
-afterEach(() => vi.unstubAllGlobals());
+beforeEach(() => clearStoredToken());
+afterEach(() => {
+  clearStoredToken();
+  vi.unstubAllGlobals();
+});
+
+describe("auth API and token storage", () => {
+  it("stores token on registerUser and loginUser", async () => {
+    respond(201, { token: "tok-1", user: { id: 1, email: "a@b.com" } });
+    const reg = await registerUser("a@b.com", "password123");
+    expect(reg.user.email).toBe("a@b.com");
+    expect(getStoredToken()).toBe("tok-1");
+
+    respond(200, { token: "tok-2", user: { id: 1, email: "a@b.com" } });
+    const login = await loginUser("a@b.com", "password123");
+    expect(login.token).toBe("tok-2");
+    expect(getStoredToken()).toBe("tok-2");
+  });
+
+  it("fetches current user with stored Bearer token and clears token on 401", async () => {
+    setStoredToken("valid-token");
+    const fetchMock = vi.fn(
+      async (_url: RequestInfo | URL, _init?: RequestInit) =>
+        new Response(JSON.stringify({ id: 7, email: "u@b.com" }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const user = await fetchCurrentUser();
+    expect(user).toEqual({ id: 7, email: "u@b.com" });
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      headers: { Authorization: "Bearer valid-token" },
+    });
+
+    respond(401, { detail: { code: "authentication_required", message: "Expired" } });
+    await expect(fetchCurrentUser()).rejects.toBeInstanceOf(AuthenticationError);
+    expect(getStoredToken()).toBeNull();
+  });
+});
 
 describe("analyzeContract", () => {
   it("surfaces the backend's error message", async () => {
@@ -17,6 +66,16 @@ describe("analyzeContract", () => {
     await expect(analyzeContract(file, "", new AbortController().signal)).rejects.toThrow(
       "No readable text was found in the uploaded file.",
     );
+  });
+
+  it("clears token and throws AuthenticationError on 401", async () => {
+    setStoredToken("expired-tok");
+    respond(401, { detail: { code: "authentication_required", message: "Please sign in." } });
+
+    await expect(analyzeContract(file, "", new AbortController().signal)).rejects.toBeInstanceOf(
+      AuthenticationError,
+    );
+    expect(getStoredToken()).toBeNull();
   });
 
   it("reads FastAPI validation errors", async () => {
@@ -33,7 +92,8 @@ describe("analyzeContract", () => {
     expect(error.message).toContain("did not respond");
   });
 
-  it("sends contract_type only when chosen", async () => {
+  it("sends contract_type only when chosen and attaches Authorization header when token is stored", async () => {
+    setStoredToken("my-jwt");
     const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -42,6 +102,7 @@ describe("analyzeContract", () => {
 
     const sent = fetchMock.mock.calls.map(([, init]) => (init.body as FormData).get("contract_type"));
     expect(sent).toEqual([null, "lease"]);
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).toEqual({ Authorization: "Bearer my-jwt" });
   });
 });
 

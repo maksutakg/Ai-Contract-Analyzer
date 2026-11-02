@@ -44,3 +44,13 @@ export interface ContractReport {
   llm_engine: string;
   yargi_source: string;
 }
+
+export interface AuthUser {
+  id: number;
+  email: string;
+}
+
+export interface AuthSession {
+  token: string;
+  user: AuthUser;
+}
