@@ -1,11 +1,18 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { analyzeContract } from "./api";
+import {
+  AuthenticationError,
+  analyzeContract,
+  clearStoredToken,
+  fetchCurrentUser,
+  getStoredToken,
+} from "./api";
+import { AuthPanel } from "./components/AuthPanel";
 import { Report } from "./components/Report";
 import { SourcePlate } from "./components/SourcePlate";
 import { UploadPanel } from "./components/UploadPanel";
 import { WaitingPanel } from "./components/WaitingPanel";
-import type { ContractReport, ContractType } from "./types";
+import type { AuthSession, AuthUser, ContractReport, ContractType } from "./types";
 
 type State =
   | { kind: "idle"; error?: string }
@@ -13,8 +20,44 @@ type State =
   | { kind: "done"; fileName: string; report: ContractReport };
 
 export function App() {
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [authChecking, setAuthChecking] = useState<boolean>(() => Boolean(getStoredToken()));
+  const [authError, setAuthError] = useState<string | undefined>(undefined);
   const [state, setState] = useState<State>({ kind: "idle" });
   const controller = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (!getStoredToken()) {
+      setAuthChecking(false);
+      return;
+    }
+    let active = true;
+    fetchCurrentUser()
+      .then((currentUser) => {
+        if (active) setUser(currentUser);
+      })
+      .catch(() => {
+        if (active) setUser(null);
+      })
+      .finally(() => {
+        if (active) setAuthChecking(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  function handleAuthenticated(session: AuthSession) {
+    setAuthError(undefined);
+    setUser(session.user);
+  }
+
+  function handleSignOut() {
+    controller.current?.abort();
+    clearStoredToken();
+    setUser(null);
+    setState({ kind: "idle" });
+  }
 
   async function start(file: File, contractType: ContractType | "") {
     controller.current = new AbortController();
@@ -24,6 +67,12 @@ export function App() {
       setState({ kind: "done", fileName: file.name, report });
     } catch (error) {
       if (controller.current.signal.aborted) {
+        setState({ kind: "idle" });
+        return;
+      }
+      if (error instanceof AuthenticationError) {
+        setUser(null);
+        setAuthError(error.message);
         setState({ kind: "idle" });
         return;
       }
@@ -54,7 +103,7 @@ export function App() {
           </div>
 
           <div className="top-nav-actions">
-            {state.kind === "done" && (
+            {user && state.kind === "done" && (
               <button
                 type="button"
                 className="nav-pill-button"
@@ -63,27 +112,48 @@ export function App() {
                 Analyze another contract ↗
               </button>
             )}
+            {user && (
+              <>
+                <span className="top-nav-user" title={user.email}>
+                  {user.email}
+                </span>
+                <button type="button" className="button-quiet" onClick={handleSignOut}>
+                  Sign out
+                </button>
+              </>
+            )}
           </div>
         </div>
       </header>
 
       <div className="app">
         <main>
-        {state.kind === "idle" && (
-          <div className="landing">
-            <UploadPanel error={state.error} onSubmit={start} />
-            <SourcePlate />
-          </div>
-        )}
-        {state.kind === "analyzing" && (
-          <WaitingPanel
-            fileName={state.fileName}
-            startedAt={state.startedAt}
-            onCancel={() => controller.current?.abort()}
-          />
-        )}
-        {state.kind === "done" && <Report fileName={state.fileName} report={state.report} />}
-      </main>
+          {authChecking ? (
+            <p className="muted">Checking session...</p>
+          ) : !user ? (
+            <div className="landing">
+              <AuthPanel initialError={authError} onAuthenticated={handleAuthenticated} />
+              <SourcePlate />
+            </div>
+          ) : (
+            <>
+              {state.kind === "idle" && (
+                <div className="landing">
+                  <UploadPanel error={state.error} onSubmit={start} />
+                  <SourcePlate />
+                </div>
+              )}
+              {state.kind === "analyzing" && (
+                <WaitingPanel
+                  fileName={state.fileName}
+                  startedAt={state.startedAt}
+                  onCancel={() => controller.current?.abort()}
+                />
+              )}
+              {state.kind === "done" && <Report fileName={state.fileName} report={state.report} />}
+            </>
+          )}
+        </main>
       </div>
     </div>
   );
