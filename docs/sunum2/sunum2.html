@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Contract Analysis System · Presentation 2</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --wine:#7A1F2B; --wine-soft:#F6E9EB; --teal:#1F6F6B; --teal-soft:#E4F1F0;
+    --ink:#1C1F24; --muted:#5D6470; --line:#E3E5E8; --bg:#FFFFFF; --panel:#F7F8FA;
+    --amber:#B7791F; --red:#B42318;
+  }
+  @page{size:960px 540px;margin:0}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:#ddd}
+  body{font-family:Inter,"Segoe UI",Arial,sans-serif;color:var(--ink);-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .slide{width:960px;height:540px;position:relative;overflow:hidden;background:var(--bg);page-break-after:always;padding:44px 56px}
+  .slide:last-child{page-break-after:auto}
+  .kicker{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--teal);display:flex;align-items:center;gap:10px}
+  .kicker .num{background:var(--wine);color:#fff;border-radius:4px;padding:2px 7px;letter-spacing:.05em}
+  h2{font-size:30px;font-weight:800;letter-spacing:-.02em;margin-top:10px;line-height:1.15}
+  .lead{font-size:14px;color:var(--muted);margin-top:8px;line-height:1.5;max-width:760px}
+  .foot{position:absolute;left:56px;right:56px;bottom:20px;display:flex;justify-content:space-between;font-size:10px;color:var(--muted);border-top:1px solid var(--line);padding-top:8px}
+  .foot b{color:var(--wine);font-weight:700}
+  .bar{position:absolute;left:0;top:0;bottom:0;width:8px;background:linear-gradient(var(--wine),var(--teal))}
+  .shot{border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(20,30,40,.12);overflow:hidden;background:#fff}
+  .shot img{display:block;width:100%}
+  .pin{position:absolute;width:24px;height:24px;border-radius:50%;background:var(--wine);color:#fff;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 4px rgba(122,31,43,.18)}
+  .note{display:flex;gap:12px;align-items:flex-start;margin-bottom:16px}
+  .note .pin{position:static;flex:none}
+  .note h4{font-size:14px;font-weight:700}
+  .note p{font-size:12px;color:var(--muted);line-height:1.45;margin-top:3px}
+  .mono{font-family:"JetBrains Mono",Consolas,monospace}
+  .tag{display:inline-block;font-size:10px;font-weight:700;border-radius:4px;padding:2px 7px;letter-spacing:.03em}
+
+  /* 1 cover */
+  .cover{background:#fff;padding:0}
+  .cover .left{position:absolute;left:0;top:0;bottom:0;width:470px;padding:56px 44px 44px 64px;background:var(--wine);color:#fff}
+  .cover .big02{position:absolute;right:-18px;bottom:-60px;font-size:250px;font-weight:800;color:rgba(255,255,255,.11);letter-spacing:-.06em;line-height:1}
+  .cover .eyebrow{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#F3C9CF}
+  .cover h1{font-size:40px;font-weight:800;line-height:1.08;letter-spacing:-.025em;margin-top:34px}
+  .cover .sub{font-size:14px;line-height:1.55;color:#F5DDE0;margin-top:18px;max-width:340px}
+  .cover .rule{width:56px;height:4px;background:#5FC4BC;margin-top:22px;border-radius:2px}
+  .cover .people{position:absolute;left:64px;bottom:44px;font-size:12px;line-height:1.7;color:#F5DDE0}
+  .cover .people b{color:#fff;font-size:13px}
+  .cover .right{position:absolute;left:470px;right:0;top:0;bottom:0;background:var(--teal-soft);display:flex;align-items:center;justify-content:center;padding:36px}
+  .cover .right .shot{width:100%;transform:rotate(-1.5deg)}
+  .cover .chip{position:absolute;right:30px;top:30px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 14px;font-size:11px;font-weight:600;color:var(--teal)}
+
+  /* 2 problem/solution */
+  .ps{display:grid;grid-template-columns:1fr 56px 1fr;gap:0;margin-top:24px;align-items:stretch}
+  .ps .card{border-radius:12px;padding:22px 24px}
+  .ps .prob{background:var(--wine-soft);border:1px solid #EBCFD3}
+  .ps .sol{background:var(--teal-soft);border:1px solid #C7E1DE}
+  .ps h3{font-size:13px;text-transform:uppercase;letter-spacing:.1em;font-weight:800}
+  .ps .prob h3{color:var(--wine)} .ps .sol h3{color:var(--teal)}
+  .ps ul{list-style:none;margin-top:12px}
+  .ps li{font-size:13px;line-height:1.45;padding:7px 0 7px 22px;position:relative;border-bottom:1px dashed rgba(0,0,0,.08)}
+  .ps li:last-child{border-bottom:0}
+  .ps .prob li::before{content:"✕";position:absolute;left:0;color:var(--wine);font-weight:800}
+  .ps .sol li::before{content:"✓";position:absolute;left:0;color:var(--teal);font-weight:800}
+  .ps .arrow{display:flex;align-items:center;justify-content:center;font-size:28px;color:var(--muted)}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:20px}
+  .stat{border-left:4px solid var(--wine);padding:4px 0 4px 14px}
+  .stat .n{font-size:26px;font-weight:800;letter-spacing:-.02em}
+  .stat .l{font-size:11.5px;color:var(--muted);margin-top:2px}
+
+  /* 5 architecture */
+  .arch{position:relative;margin-top:22px;height:330px}
+  .node{position:absolute;border-radius:12px;padding:14px 16px;background:#fff;border:1.5px solid var(--line)}
+  .node .t{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  .node .h{font-size:16px;font-weight:800;margin-top:4px}
+  .node .d{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.4}
+  .node.core{background:var(--wine);border-color:var(--wine);color:#fff}
+  .node.core .t,.node.core .d{color:#F3C9CF}
+  .node.ext{background:var(--teal-soft);border-color:#BFDCD8}
+  .node.ext .t{color:var(--teal)}
+  .lg{position:absolute;border:1.5px dashed #C9CDD3;border-radius:14px}
+  .lg span{position:absolute;top:-9px;left:14px;background:#fff;padding:0 6px;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+
+  /* 6 pipeline */
+  .pipe{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-top:30px;position:relative}
+  .pipe::before{content:"";position:absolute;left:40px;right:40px;top:23px;height:3px;background:linear-gradient(90deg,var(--wine),var(--teal));z-index:0}
+  .step{position:relative;z-index:1}
+  .step .dot{width:48px;height:48px;border-radius:50%;background:#fff;border:3px solid var(--wine);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;color:var(--wine);margin:0 auto}
+  .step:nth-child(n+4) .dot{border-color:var(--teal);color:var(--teal)}
+  .step .box{margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 11px;height:200px}
+  .step .fn{font-size:9.5px;color:var(--wine);word-break:break-all}
+  .step:nth-child(n+4) .fn{color:var(--teal)}
+  .step h4{font-size:13.5px;font-weight:800;margin-top:6px;line-height:1.2}
+  .step p{font-size:11px;color:var(--muted);line-height:1.42;margin-top:6px}
+  .step .tech{position:absolute;bottom:10px;left:11px;right:11px;font-size:10px;font-weight:700;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:6px;padding:4px 6px;text-align:center}
+  .graphnote{margin-top:14px;font-size:11.5px;color:var(--muted)}
+
+  /* 7 scoring */
+  .score{display:grid;grid-template-columns:1.05fr 1fr;gap:26px;margin-top:20px}
+  .weights{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  .w{border-radius:10px;padding:12px;text-align:center}
+  .w .n{font-size:24px;font-weight:800}
+  .w .l{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-top:2px}
+  .formula{margin-top:14px;background:#1C1F24;color:#E8EAED;border-radius:10px;padding:14px 16px;font-size:12px;line-height:1.75}
+  .formula .c{color:#7FD1C9} .formula .k{color:#F2A7B1}
+  .scale{margin-top:16px}
+  .scale .track{display:flex;height:16px;border-radius:8px;overflow:hidden}
+  .scale .labels{display:flex;font-size:10px;color:var(--muted);margin-top:5px}
+  .example{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px}
+  .example h3{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:800}
+  .example table{width:100%;border-collapse:collapse;margin-top:10px;font-size:12px}
+  .example td{padding:6px 0;border-bottom:1px solid var(--line)}
+  .example td:last-child{text-align:right;font-weight:700}
+  .result{margin-top:12px;display:flex;align-items:center;justify-content:space-between;background:#fff;border:2px solid var(--red);border-radius:10px;padding:10px 14px}
+  .result .n{font-size:28px;font-weight:800;color:var(--red)}
+
+  /* 8 purpose */
+  .purpose{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:24px}
+  .pc{border-radius:14px;padding:22px 20px;background:var(--panel);border:1px solid var(--line);position:relative}
+  .pc .ic{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center}
+  .pc h3{font-size:20px;font-weight:800;margin-top:14px}
+  .pc p{font-size:12.5px;color:var(--muted);line-height:1.5;margin-top:8px}
+  .closing{margin-top:22px;background:var(--wine);color:#fff;border-radius:14px;padding:18px 24px;display:flex;justify-content:space-between;align-items:center}
+  .closing q{font-size:15px;font-weight:600;line-height:1.45;max-width:640px;quotes:none}
+  .closing .thx{font-size:22px;font-weight:800;text-align:right}
+  .closing .thx small{display:block;font-size:11px;font-weight:600;color:#F3C9CF}
+</style>
+</head>
+<body>
+
+<!-- 1 · COVER -->
+<section class="slide cover">
+  <div class="left">
+    <div class="eyebrow">Graduation Project · Presentation 2</div>
+    <h1>AI-Powered Contract Analysis System</h1>
+    <div class="rule"></div>
+    <p class="sub">Introduction and purpose: how the system reads a Turkish contract, scores its risks and backs them with real court decisions.</p>
+    <div class="people"><b>Oğuzhan Tuğay · Maksut Akgün · Eren Yüksel</b><br>Advisor: Sibel Boran · Nişantaşı University</div>
+    <div class="big02">02</div>
+  </div>
+  <div class="right">
+    <div class="shot"><img src="img/hero.jpeg" alt=""></div>
+  </div>
+</section>
+
+<!-- 2 · PROBLEM → SOLUTION -->
+<section class="slide">
+  <div class="bar"></div>
+  <div class="kicker"><span class="num">01</span> The problem we solve</div>
+  <h2>People sign contracts they don’t fully understand</h2>
+  <div class="ps">
+    <div class="card prob">
+      <h3>Today</h3>
+      <ul>
+        <li>Contracts are long and full of legal wording</li>
+        <li>A lawyer’s review is expensive for individuals and small businesses</li>
+        <li>Unfair terms (cash payment, entry without consent) go unnoticed</li>
+        <li>Finding the related court decisions takes legal expertise</li>
+      </ul>
+    </div>
+    <div class="arrow">→</div>
+    <div class="card sol">
+      <h3>With our system</h3>
+      <ul>
+        <li>Upload a PDF or DOCX, get a plain-language summary</li>
+        <li>Every clause is checked and risky ones are flagged</li>
+        <li>Each risk comes with a concrete recommendation</li>
+        <li>Related Yargıtay, Danıştay and KVKK decisions are attached</li>
+      </ul>
+    </div>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="n">0 – 100</div><div class="l">overall risk score per contract</div></div>
+    <div class="stat" style="border-color:var(--teal)"><div class="n">3 sources</div><div class="l">Court of Cassation · Council of State · KVKK</div></div>
+    <div class="stat" style="border-color:var(--amber)"><div class="n">10 MB</div><div class="l">PDF / DOCX upload limit, nothing stored</div></div>
+  </div>
+  <div class="foot"><span><b>Contract Analysis System</b> · Presentation 2</span><span>2 / 8</span></div>
+</section>
+
+<!-- 3 · THE REPORT -->
+<section class="slide">
+  <div class="bar"></div>
+  <div class="kicker"><span class="num">02</span> The result</div>
+  <h2>What the user gets back</h2>
+  <div style="display:grid;grid-template-columns:1.55fr 1fr;gap:28px;margin-top:40px;align-items:start">
+    <div style="position:relative;padding-left:36px">
+      <div class="shot"><img src="img/report.jpeg" alt=""></div>
+      <div class="pin" style="left:0;top:24px">1</div>
+      <div class="pin" style="left:0;top:118px">2</div>
+      <div class="pin" style="left:183px;top:-30px">3</div>
+      <svg width="40" height="40" style="position:absolute;left:0;top:0;overflow:visible">
+        <g stroke="#7A1F2B" stroke-width="1.5" fill="none" stroke-dasharray="3 3">
+          <path d="M24 36 L40 36"/><path d="M24 130 L40 130"/><path d="M195 -6 L195 6"/>
+        </g>
+      </svg>
+    </div>
+    <div style="padding-top:6px">
+      <div class="note"><div class="pin">1</div><div><h4>One risk score</h4><p>A sample lease agreement scores <b style="color:var(--red)">100 / 100 · Critical</b>, so the user sees the danger at a glance.</p></div></div>
+      <div class="note"><div class="pin">2</div><div><h4>Risks ranked by severity</h4><p>Critical, high and medium findings are listed first, e.g. entry without consent, cash payment.</p></div></div>
+      <div class="note"><div class="pin">3</div><div><h4>Plain-language summary</h4><p>Parties, duration, price, other provisions and dispute resolution, in a few short bullets.</p></div></div>
+    </div>
+  </div>
+  <div style="margin-top:26px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 18px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-right:2px">Also included</span>
+    <span class="tag" style="background:#fff;border:1px solid var(--line);font-size:11px;padding:5px 10px">Clause-by-clause findings</span>
+    <span class="tag" style="background:#fff;border:1px solid var(--line);font-size:11px;padding:5px 10px">Recommended actions</span>
+    <span class="tag" style="background:#fff;border:1px solid var(--line);font-size:11px;padding:5px 10px">Related court decisions</span>
+    <span class="tag" style="background:#fff;border:1px solid var(--line);font-size:11px;padding:5px 10px">Limitations of the analysis</span>
+  </div>
+  <div class="foot"><span><b>Contract Analysis System</b> · Presentation 2</span><span>3 / 8</span></div>
+</section>
+
+<!-- 4 · CLAUSE LEVEL -->
+<section class="slide">
+  <div class="bar"></div>
+  <div class="kicker"><span class="num">02</span> The result</div>
+  <h2>Every risk points to a clause</h2>
+  <p class="lead">The report doesn’t just say “this contract is risky”. It shows the exact clause, explains why, and tells the user what to change.</p>
+  <div style="position:relative;margin-top:22px">
+    <div class="shot" style="width:640px"><img src="img/clause.jpeg" alt=""></div>
+    <div style="position:absolute;left:660px;top:0;width:184px">
+      <div style="border-left:3px solid var(--ink);padding-left:10px;margin-bottom:14px"><div style="font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--muted)">ORIGINAL CLAUSE</div><div style="font-size:12px;margin-top:3px;line-height:1.4">Madde 2 · Kira bedeli, quoted in Turkish as written</div></div>
+      <div style="border-left:3px solid var(--amber);padding-left:10px;margin-bottom:14px"><div style="font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--amber)">RISK + REASON</div><div style="font-size:12px;margin-top:3px;line-height:1.4">High · cash payment conflicts with banking rules</div></div>
+      <div style="border-left:3px solid var(--teal);padding-left:10px"><div style="font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--teal)">RECOMMENDATION</div><div style="font-size:12px;margin-top:3px;line-height:1.4">Require bank transfer to the lessor’s account</div></div>
+    </div>
+  </div>
+  <div style="display:flex;gap:10px;margin-top:20px;font-size:11px">
+    <span class="tag" style="background:#FDECEC;color:var(--red)">Critical</span>
+    <span class="tag" style="background:#FDF3E1;color:var(--amber)">High</span>
+    <span class="tag" style="background:#FBF6D9;color:#8A6D00">Medium</span>
+    <span class="tag" style="background:var(--teal-soft);color:var(--teal)">Low</span>
+    <span style="color:var(--muted);margin-left:6px">Four severity levels, each with a confidence value from the model</span>
+  </div>
+  <div class="foot"><span><b>Contract Analysis System</b> · Presentation 2</span><span>4 / 8</span></div>
+</section>
+
+<!-- 5 · ARCHITECTURE -->
+<section class="slide">
+  <div class="bar"></div>
+  <div class="kicker"><span class="num">03</span> System design</div>
+  <h2>Architecture: who calls whom</h2>
+  <div class="arch" style="margin-top:16px;height:340px">
+    <svg width="848" height="340" style="position:absolute;left:0;top:0;overflow:visible">
+      <defs>
+        <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5D6470"/></marker>
+      </defs>
+      <g stroke="#5D6470" stroke-width="2" fill="none">
+        <path d="M150 40 L192 40" marker-end="url(#b)"/>
+        <path d="M192 68 L150 68" marker-end="url(#b)"/>
+        <path d="M300 92 L300 122" marker-end="url(#b)"/>
+        <path d="M500 122 L500 92" marker-end="url(#b)"/>
+        <path d="M606 172 L662 100" marker-start="url(#b)" marker-end="url(#b)"/>
+        <path d="M606 284 L662 262" marker-start="url(#b)" marker-end="url(#b)"/>
+      </g>
+      <g font-family="Inter,Segoe UI,sans-serif" font-size="9.5" fill="#5D6470" font-weight="700">
+        <text x="152" y="34">upload</text>
+        <text x="156" y="82">JSON</text>
+        <text x="306" y="111">raw text</text>
+        <text x="420" y="111">ContractReport</text>
+        <text x="618" y="190">prompt</text><text x="618" y="201">⇄ JSON</text>
+        <text x="612" y="296">MCP</text><text x="610" y="307" font-size="8">JSON-RPC</text>
+      </g>
+    </svg>
+
+    <div class="node" style="left:0;top:14px;width:150px;padding:12px 14px">
+      <div class="t">Frontend</div><div class="h" style="font-size:15px">React + JS</div>
+      <div class="d">Upload form and report view</div>
+    </div>
+    <div style="position:absolute;left:0;top:150px;width:150px;font-size:10px;color:var(--muted);line-height:1.9">
+      <div style="font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:2px">Step colour</div>
+      <div><span class="tag" style="background:#EEF0F3;color:var(--ink)">Python</span> local code</div>
+      <div><span class="tag" style="background:var(--teal-soft);color:var(--teal)">Gemini</span> calls the LLM</div>
+      <div><span class="tag" style="background:#FDF3E1;color:var(--amber)">Yargı</span> calls MCP</div>
+    </div>
+
+    <div class="lg" style="left:178px;top:0;width:442px;height:340px"><span>Backend · Python</span></div>
+    <div class="node core" style="left:192px;top:14px;width:414px;height:78px;padding:11px 16px">
+      <div class="t">REST API · FastAPI</div>
+      <div class="h mono" style="font-size:13px">POST /api/v1/contracts/analyze</div>
+      <div class="d">10 MB limit → text from PDF (pypdf) or DOCX (python-docx)</div>
+    </div>
+    <div class="node" style="left:192px;top:122px;width:414px;height:204px;padding:11px 14px">
+      <div class="t">LangGraph StateGraph · <span class="mono" style="text-transform:none;letter-spacing:0">analyze_contract()</span></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:9px">
+        <div style="background:#EEF0F3;border-radius:7px;padding:7px 8px"><div class="mono" style="font-size:8.5px">1 segment_clauses</div><div style="font-size:10.5px;color:var(--muted);margin-top:2px">rule-based split</div></div>
+        <div style="background:var(--teal-soft);border-radius:7px;padding:7px 8px"><div class="mono" style="font-size:8.5px;color:var(--teal)">2 classify_risks</div><div style="font-size:10.5px;color:var(--muted);margin-top:2px">findings + severity</div></div>
+        <div style="background:#EEF0F3;border-radius:7px;padding:7px 8px"><div class="mono" style="font-size:8.5px">3 score_contract</div><div style="font-size:10.5px;color:var(--muted);margin-top:2px">0–100 score</div></div>
+        <div style="background:var(--teal-soft);border-radius:7px;padding:7px 8px"><div class="mono" style="font-size:8.5px;color:var(--teal)">4 build_legal_queries</div><div style="font-size:10.5px;color:var(--muted);margin-top:2px">Turkish queries</div></div>
+        <div style="background:#FDF3E1;border-radius:7px;padding:7px 8px"><div class="mono" style="font-size:8.5px;color:var(--amber)">5 retrieve_yargi_…</div><div style="font-size:10.5px;color:var(--muted);margin-top:2px">search decisions</div></div>
+        <div style="background:var(--teal-soft);border-radius:7px;padding:7px 8px"><div class="mono" style="font-size:8.5px;color:var(--teal)">6 compose_report</div><div style="font-size:10.5px;color:var(--muted);margin-top:2px">summary + report</div></div>
+      </div>
+      <div style="margin-top:9px;border-top:1px dashed var(--line);padding-top:8px;font-size:10.5px;color:var(--muted);line-height:1.45">
+        <b style="color:var(--ink)">CRAG filter</b> (inside step 5): results come back from Yargı MCP, then empty and irrelevant decisions are dropped with Turkish-normalised keyword checks · max 3 per risk, 10 total
+      </div>
+    </div>
+
+    <div class="node ext" style="left:662px;top:34px;width:186px;padding:12px 14px">
+      <div class="t">Language model</div><div class="h" style="font-size:15px">Gemini API</div>
+      <div class="d">Used by steps 2, 4 and 6: risks, search queries, summary</div>
+    </div>
+    <div class="node" style="left:662px;top:206px;width:186px;padding:12px 14px;background:#FDF3E1;border-color:#F0D9AE">
+      <div class="t" style="color:var(--amber)">Legal data</div><div class="h" style="font-size:15px">Yargı MCP</div>
+      <div class="d">Used by step 5: Yargıtay / Danıştay (bedesten) and KVKK search</div>
+    </div>
+  </div>
+  <div class="foot"><span><b>Contract Analysis System</b> · Presentation 2</span><span>5 / 8</span></div>
+</section>
+<!-- 6 · PIPELINE -->
+<section class="slide">
+  <div class="bar"></div>
+  <div class="kicker"><span class="num">03</span> System design</div>
+  <h2>From upload to report in six steps</h2>
+  <div class="pipe">
+    <div class="step"><div class="dot">1</div><div class="box"><div class="fn mono">segment_clauses</div><h4>Split into clauses</h4><p>Extracted text is divided into numbered clauses by rules (MADDE headings).</p><div class="tech">Python · rule-based</div></div></div>
+    <div class="step"><div class="dot">2</div><div class="box"><div class="fn mono">classify_risks</div><h4>Find risks</h4><p>The model labels each risky clause with category, severity and confidence.</p><div class="tech">Gemini API</div></div></div>
+    <div class="step"><div class="dot">3</div><div class="box"><div class="fn mono">score_contract</div><h4>Score 0–100</h4><p>Weighted findings become one score and a risk level.</p><div class="tech">Python</div></div></div>
+    <div class="step"><div class="dot">4</div><div class="box"><div class="fn mono">build_legal_queries</div><h4>Write queries</h4><p>Each risk is turned into a Turkish legal search query.</p><div class="tech">Gemini API</div></div></div>
+    <div class="step"><div class="dot">5</div><div class="box"><div class="fn mono">retrieve_yargi_decisions</div><h4>Fetch precedents</h4><p>Decisions are searched per risk, then empty or irrelevant ones are dropped (CRAG).</p><div class="tech">Yargı MCP + CRAG</div></div></div>
+    <div class="step"><div class="dot">6</div><div class="box"><div class="fn mono">compose_report</div><h4>Build the report</h4><p>Gemini writes the summary; findings, actions, decisions and limitations go into one JSON.</p><div class="tech">Gemini → JSON</div></div></div>
+  </div>
+  <p class="graphnote">Each step is a node in a <b>LangGraph StateGraph</b>; they pass one shared state object (<span class="mono">ContractAnalysisState</span>) from step to step.</p>
+  <div class="foot"><span><b>Contract Analysis System</b> · Presentation 2</span><span>6 / 8</span></div>
+</section>
+
+<!-- 7 · RISK SCORE -->
+<section class="slide">
+  <div class="bar"></div>
+  <div class="kicker"><span class="num">03</span> System design</div>
+  <h2>How the risk score is calculated</h2>
+  <div class="score">
+    <div>
+      <div class="weights">
+        <div class="w" style="background:var(--teal-soft);color:var(--teal)"><div class="n">15</div><div class="l">Low</div></div>
+        <div class="w" style="background:#FBF6D9;color:#8A6D00"><div class="n">35</div><div class="l">Medium</div></div>
+        <div class="w" style="background:#FDF3E1;color:var(--amber)"><div class="n">65</div><div class="l">High</div></div>
+        <div class="w" style="background:#FDECEC;color:var(--red)"><div class="n">85</div><div class="l">Critical</div></div>
+      </div>
+      <div class="formula mono">
+        <span class="c"># each finding</span><br>
+        weight = <span class="k">severity_weight</span> × confidence<br>
+        <span class="c"># whole contract</span><br>
+        score = max(<span class="k">average</span>, <span class="k">highest</span>) + density_bonus<br>
+        density_bonus = min(20, 4 × (findings − 1))
+      </div>
+      <div class="scale">
+        <div class="track"><div style="width:25%;background:#7FC4BD"></div><div style="width:25%;background:#E8D27A"></div><div style="width:40%;background:#E9A85A"></div><div style="width:10%;background:#D9534F"></div></div>
+        <div class="labels"><span style="width:25%">0 · Low</span><span style="width:25%">25 · Medium</span><span style="width:40%">50 · High</span><span style="width:10%">90+</span></div>
+      </div>
+    </div>
+    <div class="example">
+      <h3>Example · kira_sozlesmesi.docx</h3>
+      <table>
+        <tr><td><span class="tag" style="background:#FDECEC;color:var(--red)">Critical</span> Entry without consent</td><td>85 × conf.</td></tr>
+        <tr><td><span class="tag" style="background:#FDF3E1;color:var(--amber)">High</span> Rent increase · cash · eviction</td><td>3 × 65 × conf.</td></tr>
+        <tr><td><span class="tag" style="background:#FBF6D9;color:#8A6D00">Medium</span> Jurisdiction · deposit</td><td>2 × 35 × conf.</td></tr>
+        <tr><td>6 findings → density bonus</td><td>+20</td></tr>
+      </table>
+      <div class="result"><span style="font-size:12px;font-weight:700">Final score (capped at 100)</span><span class="n">100</span></div>
+      <p style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.45">Taking the highest finding means one critical clause can’t be hidden by many harmless ones.</p>
+    </div>
+  </div>
+  <div class="foot"><span><b>Contract Analysis System</b> · Presentation 2</span><span>7 / 8</span></div>
+</section>
+
+<!-- 8 · PURPOSE -->
+<section class="slide">
+  <div class="bar"></div>
+  <div class="kicker"><span class="num">04</span> Purpose of the project</div>
+  <h2>Why does this project exist?</h2>
+  <p class="lead">To make contract review accessible: anyone should see the risks in a Turkish contract, and the court decisions behind them, before signing.</p>
+  <div class="purpose">
+    <div class="pc">
+      <div class="ic" style="background:var(--wine-soft)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7A1F2B" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.5-4.5"/></svg></div>
+      <h3>Understand</h3><p>A long contract becomes a plain summary, separate clauses and one risk score from 0 to 100.</p>
+    </div>
+    <div class="pc">
+      <div class="ic" style="background:var(--teal-soft)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1F6F6B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M5 21h14M6 7h12M6 7l-3 7a3 3 0 006 0zM18 7l-3 7a3 3 0 006 0z"/></svg></div>
+      <h3>Prove</h3><p>Every risk is backed by real Court of Cassation, Council of State and KVKK decisions, not only AI opinion.</p>
+    </div>
+    <div class="pc">
+      <div class="ic" style="background:#FDF3E1"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#B7791F" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></div>
+      <h3>Act</h3><p>Each risk has a recommendation, so the user knows what to question or change before signing.</p>
+    </div>
+  </div>
+  <div class="closing">
+    <q>Not a replacement for a lawyer, but a first, affordable check that anyone can run.</q>
+    <div class="thx">Thank you<small>Questions?</small></div>
+  </div>
+  <div class="foot"><span><b>Contract Analysis System</b> · Presentation 2</span><span>8 / 8</span></div>
+</section>
+
+</body>
+</html>
