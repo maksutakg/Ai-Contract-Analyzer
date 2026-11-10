@@ -12,7 +12,7 @@ from .text_utils import searchable
 
 MAX_RELATED_DECISIONS = 5
 MAX_RELATED_DECISIONS_PER_FINDING = 1
-HYDRATED_EXCERPT_CHARS = 1200
+HYDRATED_EXCERPT_CHARS = 1800
 
 NO_RELEVANT_DECISION_LIMITATION = "No sufficiently relevant Yargi MCP decision was found for some findings."
 AMBIGUOUS_DECISION_LIMITATION = (
@@ -95,6 +95,27 @@ def apply_assessment(decision: YargiDecision, assessment: DecisionAssessment) ->
     decision.graded_by = assessment.graded_by
 
 
+def _relevant_excerpt(
+    text: str,
+    category: str | None,
+    max_chars: int = HYDRATED_EXCERPT_CHARS,
+) -> str:
+    if len(text) <= max_chars:
+        return text
+    terms = [searchable(term) for term in relevance_terms(category)] or ["degerlendirme", "gerekce"]
+    low = searchable(text)
+    positions = [pos for term in terms if (pos := low.find(term)) >= 0]
+    if not positions:
+        return text[:max_chars]
+    earliest = int(min(positions) * len(text) / max(1, len(low)))
+    if earliest < max_chars - 300:
+        return text[:max_chars]
+    prefix = text[:350].rstrip() + "\n...\n"
+    remaining = max(200, max_chars - len(prefix))
+    start = max(350, min(len(text) - remaining, earliest - 200))
+    return prefix + text[start : start + remaining]
+
+
 async def hydrate_decisions(
     decisions: Iterable[YargiDecision],
     yargi_client: object,
@@ -125,7 +146,7 @@ async def hydrate_decisions(
                 cache[key] = None
         text = cache[key]
         if text:
-            decision.excerpt = text[:HYDRATED_EXCERPT_CHARS]
+            decision.excerpt = _relevant_excerpt(text, decision.finding_category)
     return fetches
 
 

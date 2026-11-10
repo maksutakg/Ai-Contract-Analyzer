@@ -10,7 +10,7 @@ from .facts import FACTS_BY_TYPE
 from .missing_clauses import ChecklistTopic
 from .models import Clause, RiskFinding, YargiDecision
 
-GRADER_EXCERPT_CHARS = 900
+GRADER_EXCERPT_CHARS = 1500
 
 
 def summary_prompt(text: str, contract_type: str | None) -> str:
@@ -136,8 +136,9 @@ def legal_query_prompt(finding: RiskFinding) -> str:
         "or KVKK decisions on a legal database.\n\n"
         "Follow these constraints:\n"
         "1. The query must be in Turkish.\n"
-        "2. Use exact match double quotes for key legal concepts (e.g. \"cezai şart\", \"veri işleyen\").\n"
-        "3. Keep the query under 10 words.\n"
+        "2. The search engine treats bare spaces as OR, so join 2 to 3 core Turkish legal concepts with AND "
+        "(e.g. \"kira sözleşmesi\" AND \"güvence bedeli\" or \"cezai şart\" AND \"Türk Borçlar Kanunu\").\n"
+        "3. Use double quotes around multi-word legal phrases and keep the query under 8 words.\n"
         "4. Return ONLY the search query text, no explanation, no quotes around the whole query.\n\n"
         f"Risk Category: {finding.category}\n"
         f"Explanation: {finding.explanation}\n"
@@ -156,8 +157,8 @@ def rewrite_query_prompt(finding: RiskFinding, previous_queries: list[str], feed
         f"Queries already tried:\n{tried}\n\n"
         f"Why they failed:\n{feedback}\n\n"
         "Write ONE new Turkish search query that is different from all queries already tried. "
-        "Usually broaden it: drop over-specific or quoted phrases, keep at most one quoted core "
-        "legal concept, prefer statutory or doctrinal terms courts actually use. "
+        "Broaden by using 2 core statutory or doctrinal legal concepts joined with AND "
+        "(e.g. \"kira sözleşmesi\" AND \"konut dokunulmazlığı\"); avoid extra restrictive adjectives. "
         "Keep it under 8 words. Return ONLY the query text, no explanation."
     )
 

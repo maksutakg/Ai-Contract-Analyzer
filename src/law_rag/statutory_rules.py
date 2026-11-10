@@ -60,7 +60,15 @@ class StatutoryRule:
 
 
 def _fmt(value: float) -> str:
-    return f"{value:g}".replace(".", ",")
+    if value == 0:
+        return "0"
+    raw = f"{value:.6f}".rstrip("0").rstrip(".")
+    integer, _, fraction = raw.partition(".")
+    sign = ""
+    if integer.startswith("-"):
+        sign, integer = "-", integer[1:]
+    grouped = f"{int(integer):,}".replace(",", ".")
+    return f"{sign}{grouped},{fraction}" if fraction else f"{sign}{grouped}"
 
 
 def _premises_known(facts: Facts) -> bool:

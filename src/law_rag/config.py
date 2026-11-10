@@ -9,9 +9,9 @@ class Settings(BaseSettings):
     )
 
     gemini_api_key: str | None = Field(default=None, validation_alias="GEMINI_API_KEY")
-    gemini_model: str = Field(default="gemma-3-27b-it", validation_alias="GEMINI_MODEL")
+    gemini_model: str = Field(default="gemini-3.5-flash-lite", validation_alias="GEMINI_MODEL")
     yargi_mcp_url: str = Field(
-        default="https://yargimcp.surucu.dev/mcp/",
+        default="http://127.0.0.1:8001/mcp/",
         validation_alias="YARGI_MCP_URL",
     )
     use_remote_yargi: bool = Field(default=False, validation_alias="USE_REMOTE_YARGI")
@@ -20,7 +20,6 @@ class Settings(BaseSettings):
         validation_alias="YARGI_MAX_RESULTS_PER_FINDING",
     )
     yargi_max_total_decisions: int = Field(default=10, validation_alias="YARGI_MAX_TOTAL_DECISIONS")
-    yargi_fetch_documents: bool = Field(default=False, validation_alias="YARGI_FETCH_DOCUMENTS")
     yargi_request_timeout_seconds: float = Field(
         default=30.0,
         validation_alias="YARGI_REQUEST_TIMEOUT_SECONDS",

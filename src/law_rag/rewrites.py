@@ -7,6 +7,7 @@ fallback.
 """
 
 from .models import Clause, ClauseRewrite, RiskFinding
+from .segmentation import PREAMBLE_ID
 
 # (category, contract type or "*") -> (replacement text, short rationale)
 _TEMPLATES: dict[tuple[str, str], tuple[str, str]] = {
@@ -104,7 +105,7 @@ def clauses_to_rewrite(
     """Clauses (in contract order) with their applicable findings."""
     by_clause: dict[str, list[RiskFinding]] = {}
     for finding in findings:
-        if finding.applies_to_user and finding.clause_id:
+        if finding.applies_to_user and finding.clause_id and finding.clause_id != PREAMBLE_ID:
             by_clause.setdefault(finding.clause_id, []).append(finding)
     return [(clause, by_clause[clause.id]) for clause in clauses if clause.id in by_clause]
 

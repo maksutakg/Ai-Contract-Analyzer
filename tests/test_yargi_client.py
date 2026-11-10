@@ -104,3 +104,89 @@ async def test_fetch_decision_text_uses_decision_source() -> None:
 
     assert await client.fetch_decision_text(bedesten_decision) == "Bedesten karar metni"
     assert await client.fetch_decision_text(kvkk_decision) == "KVKK karar metni"
+
+
+@pytest.mark.asyncio
+async def test_remote_yargi_client_reuses_http_client_and_closes(monkeypatch) -> None:
+    created: list[Any] = []
+
+    class DummyResponse:
+        def __init__(self, data: dict[str, Any], headers: dict[str, str] | None = None) -> None:
+            self._data = data
+            self.headers = headers or {"content-type": "application/json"}
+            self.text = ""
+            self.status_code = 200
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, Any]:
+            return self._data
+
+    class FakeAsyncHttp:
+        def __init__(self, **kwargs) -> None:
+            self.closed = False
+            created.append(self)
+
+        async def post(self, url: str, headers=None, json=None):
+            method = json.get("method")
+            if method == "initialize":
+                return DummyResponse({"result": {}}, {"mcp-session-id": "s1", "content-type": "application/json"})
+            if method == "notifications/initialized":
+                return DummyResponse({})
+            if method == "tools/list":
+                return DummyResponse({"result": {"tools": [{"name": "search_bedesten_unified"}]}})
+            tool_name = json.get("params", {}).get("name")
+            if tool_name == "search_bedesten_unified":
+                return DummyResponse(
+                    {
+                        "result": {
+                            "structuredContent": {
+                                "decisions": [{"documentId": "doc-1", "title": "Karar 1"}]
+                            }
+                        }
+                    }
+                )
+            return DummyResponse({"result": {"structuredContent": {"markdown_content": "Metin"}}})
+
+        async def aclose(self) -> None:
+            self.closed = True
+
+    monkeypatch.setattr("law_rag.yargi_client.httpx.AsyncClient", FakeAsyncHttp)
+    client = RemoteYargiMcpClient()
+
+    first = await client.search("depozito", category="deposit_forfeiture")
+    await client.fetch_decision_text(first[0])
+    await client.aclose()
+
+    assert len(created) == 1
+    assert created[0].closed is True
+
+
+@pytest.mark.asyncio
+async def test_bedesten_normalizes_and_syntax_and_halts_on_rate_limit(monkeypatch) -> None:
+    from law_rag.yargi_client import YargiMcpError
+
+    client = RecordingYargiClient()
+    await client.search('"kira sözleşmesi" "güvence bedeli" iade', category="deposit_forfeiture")
+    first_phrase = client.calls[0][1]["phrase"]
+    assert first_phrase == '"kira sözleşmesi" AND "güvence bedeli" AND iade'
+
+    client.calls.clear()
+    await client.search('depozito OR teminat', category="deposit_forfeiture")
+    assert client.calls[0][1]["phrase"] == 'depozito OR teminat'
+
+    class RateLimitedClient(RecordingYargiClient):
+        async def _call_tool(self, http_client, name, arguments):
+            self.calls.append((name, arguments))
+            return {
+                "decisions": [],
+                "error": "rate_limit_exceeded",
+                "status_code": 429,
+                "retry_after": "28.5",
+            }
+
+    limited = RateLimitedClient()
+    with pytest.raises(YargiMcpError):
+        await limited.search('"kira sözleşmesi" AND depozito', category="deposit_forfeiture")
+    assert len(limited.calls) == 1

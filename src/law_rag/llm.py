@@ -10,7 +10,7 @@ from typing import Any
 from google import genai
 
 from . import prompts
-from .call_gate import CallGate
+from .call_gate import CallGate, create_genai_client
 from .analyzer_base import (
     CLASSIFY_FALLBACK_WARNING,
     GRADE_FALLBACK_WARNING,
@@ -31,7 +31,13 @@ from .crag import keyword_grade
 from .fake_analyzer import FakeContractAnalyzer
 from .llm_steps import GeminiExtraStepsMixin
 from .models import Clause, DecisionAssessment, RiskFinding, YargiDecision
-from .text_utils import json_array_from_text, searchable, split_text_by_budget
+from .text_utils import (
+    extract_statute_numbers,
+    json_array_from_text,
+    searchable,
+    split_text_by_budget,
+    strip_unsupported_statutes,
+)
 
 __all__ = [
     "ContractAnalyzer",
@@ -107,7 +113,7 @@ class GeminiContractAnalyzer(GeminiExtraStepsMixin, WarningCollector):
         if not app_settings.gemini_api_key:
             raise ValueError("GEMINI_API_KEY is required for GeminiContractAnalyzer.")
         self._settings = app_settings
-        self._client = genai.Client(api_key=app_settings.gemini_api_key)
+        self._client = create_genai_client(genai.Client, app_settings.gemini_api_key)
         self._fallback = FakeContractAnalyzer()
         # A shared gate paces this analyzer together with OCR of the same request.
         self._gate = gate or _CallGate(
@@ -194,7 +200,15 @@ class GeminiContractAnalyzer(GeminiExtraStepsMixin, WarningCollector):
         raw: str,
         valid_clause_ids: set[str],
         contract_type: str | None = None,
+        clauses: list[Clause] | None = None,
     ) -> list[RiskFinding]:
+        clause_sources = {
+            clause.id: extract_statute_numbers(f"{clause.title or ''} {clause.text}")
+            for clause in (clauses or [])
+        }
+        batch_source = extract_statute_numbers(
+            " ".join(f"{clause.title or ''} {clause.text}" for clause in (clauses or []))
+        )
         findings: list[RiskFinding] = []
         for item in json_array_from_text(raw or "[]"):
             clause_id = item.get("clause_id")
@@ -210,13 +224,24 @@ class GeminiContractAnalyzer(GeminiExtraStepsMixin, WarningCollector):
             if disadvantaged is None:
                 # Unknown or missing: use the static mapping rather than guessing.
                 disadvantaged = default_disadvantaged(contract_type, category)
+            law_nums, clause_nums = clause_sources.get(clause_id or "", batch_source)
+            explanation = strip_unsupported_statutes(
+                str(item.get("explanation", "Risk hukuki inceleme gerektiriyor.")),
+                law_nums,
+                clause_nums,
+            )
+            recommendation = strip_unsupported_statutes(
+                str(item.get("recommendation", "Maddeyi gözden geçirip revize edin.")),
+                law_nums,
+                clause_nums,
+            )
             findings.append(
                 RiskFinding(
                     id=f"finding-{len(findings) + 1}",
                     category=category,
                     severity=severity if severity in _SEVERITY_RANK else "medium",  # type: ignore[arg-type]
-                    explanation=str(item.get("explanation", "Risk hukuki inceleme gerektiriyor.")),
-                    recommendation=str(item.get("recommendation", "Maddeyi gözden geçirip revize edin.")),
+                    explanation=explanation,
+                    recommendation=recommendation,
                     confidence=confidence,
                     clause_id=clause_id,
                     disadvantaged_party=disadvantaged,
@@ -241,7 +266,7 @@ class GeminiContractAnalyzer(GeminiExtraStepsMixin, WarningCollector):
             try:
                 raw = await self._generate(prompt)
                 batch_findings = self._parse_findings(
-                    raw, {clause.id for clause in batch_clauses}, contract_type
+                    raw, {clause.id for clause in batch_clauses}, contract_type, batch_clauses
                 )
                 collected.extend(batch_findings[:max_findings])
             except Exception:

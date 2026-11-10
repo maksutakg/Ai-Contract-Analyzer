@@ -30,8 +30,8 @@ This project is an AI-powered smart contract analysis system that detects risks 
 **Knowledge base.** One per session, built from the report: `clause` chunks (long clauses split on sentence boundaries at `CHAT_CHUNK_MAX_CHARS`), `finding` (explanation, recommendation and the curated statute references), `statutory_check`, `missing_clause` (with the suggested clause), `rewrite` and `decision` (related court decisions). Chunk ids are stable and derived from the report: `clause-3`, `clause-3-part2`, `finding-1`, `check-lease_deposit_cap`, `missing-deposit`, `rewrite-clause-3`, `decision-1`; chunks also carry the `clause_id` they belong to.
 
 **Retrieval** (`law_rag.chat_index.retrieve`, usable without answer generation; mode `hybrid`, `dense` or `lexical`):
-*   Lexical: BM25 (k1=1.2, b=0.75) over diacritic-free tokens (`text_utils.searchable`), stopwords removed, each token truncated to its first 5 characters as a simple stemmer for Turkish. A chunk counts as a lexical match when its score is at least 1.0 and the question terms it contains carry at least 35% of the question's IDF mass.
-*   Dense: cosine similarity of embeddings from the Gemini embeddings endpoint via google-genai (`EMBEDDING_MODEL`, default `gemini-embedding-001`, task types `RETRIEVAL_DOCUMENT` / `RETRIEVAL_QUERY`, `EMBEDDING_DIMENSIONS` default 768, vectors normalised). A dense match needs a similarity of at least `CHAT_MIN_DENSE_SIMILARITY` (default 0.6 for Gemini, an unmeasured starting value; 0.3 for the offline embedder).
+*   Lexical: BM25 (k1=1.2, b=0.75) over diacritic-free tokens (`text_utils.searchable`), stopwords removed, each token truncated to its first 5 characters as a simple stemmer for Turkish. A chunk counts as a lexical match when its score is at least 0.5 and the question terms it contains carry at least 35% of the question's IDF mass.
+*   Dense: cosine similarity of embeddings from the Gemini embeddings endpoint via google-genai (`EMBEDDING_MODEL`, default `gemini-embedding-001`, task types `RETRIEVAL_DOCUMENT` / `RETRIEVAL_QUERY`, `EMBEDDING_DIMENSIONS` default 768, vectors normalised). A dense match needs a similarity of at least `CHAT_MIN_DENSE_SIMILARITY` (default 0.65 for Gemini, calibrated on the evaluation set; 0.3 for the offline embedder).
 *   Hybrid: reciprocal rank fusion of the two match lists, `score = Σ 1 / (60 + rank)`; the top `CHAT_TOP_K` chunks are used.
 *   If the embedding call fails (at session creation or for a question), retrieval falls back to lexical-only and the response says so in `notes`.
 *   Offline, a deterministic embedder (hashed character 3/4-grams of each word's first 7 characters) stands in, so "depozitomu" finds the deposit clause without a key.
@@ -73,12 +73,11 @@ Your `.env` file should be configured as follows:
 
 ```ini
 GEMINI_API_KEY=
-GEMINI_MODEL=gemma-3-27b-it
-YARGI_MCP_URL=https://yargimcp.surucu.dev/mcp
+GEMINI_MODEL=gemini-3.5-flash-lite
+YARGI_MCP_URL=http://127.0.0.1:8001/mcp/
 USE_REMOTE_YARGI=true
 YARGI_MAX_RESULTS_PER_FINDING=3
 YARGI_MAX_TOTAL_DECISIONS=10
-YARGI_FETCH_DOCUMENTS=false
 YARGI_REQUEST_TIMEOUT_SECONDS=30
 MAX_UPLOAD_BYTES=10485760
 
@@ -118,11 +117,19 @@ CHAT_MAX_SESSIONS=50
 CHAT_TOP_K=6
 CHAT_HISTORY_TURNS=3
 CHAT_CHUNK_MAX_CHARS=800
-# empty: embedder default (0.6 Gemini, 0.3 offline)
+# empty: embedder default (0.65 Gemini, 0.3 offline)
 CHAT_MIN_DENSE_SIMILARITY=
 ```
 
-### 2. Start the Server
+### 2. Start Local Yargı MCP Server (for Live Case-Law Retrieval)
+
+When `USE_REMOTE_YARGI=true` with the local default `YARGI_MCP_URL=http://127.0.0.1:8001/mcp/`, start the local `yargi-mcp` HTTP server in a separate terminal:
+
+```bash
+uv run python scripts/run_yargi_mcp.py
+```
+
+### 3. Start the Server
 
 To launch the FastAPI server, run:
 
@@ -219,10 +226,17 @@ The analysis report returns a JSON payload with the following fields:
 
 ---
 
-## Running Tests
+## Running Tests & Evaluation
 
 To run the unit test suite:
 
 ```bash
 uv run pytest
+```
+
+To run the offline evaluation harness (`scripts/evaluate.py`, see `scripts/eval_data/ANNOTATION_GUIDE.md` for labeling additional contracts) or include live Gemini API checks (`--live`):
+
+```bash
+uv run python scripts/evaluate.py
+uv run python scripts/evaluate.py --live
 ```

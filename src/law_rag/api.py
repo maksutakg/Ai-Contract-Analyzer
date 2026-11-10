@@ -97,6 +97,10 @@ def create_app(use_fake_clients: bool = False) -> FastAPI:
                     "message": str(exc) or exc.__class__.__name__,
                 },
             ) from exc
+        finally:
+            close = getattr(yargi_client, "aclose", None)
+            if close is not None:
+                await close()
 
     @app.post(
         "/api/v1/contracts/export-docx",

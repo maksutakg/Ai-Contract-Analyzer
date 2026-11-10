@@ -19,7 +19,7 @@ import math
 import zlib
 from typing import Any, Protocol
 
-from .call_gate import CallGate
+from .call_gate import CallGate, create_genai_client
 from .text_utils import word_tokens
 
 Vector = list[float]
@@ -75,9 +75,7 @@ class FakeEmbedder:
 
 
 class GeminiEmbedder:
-    # Unverified starting point for gemini-embedding-001 at 768 dimensions; set
-    # CHAT_MIN_DENSE_SIMILARITY after measuring (evaluation package).
-    default_min_similarity = 0.6
+    default_min_similarity = 0.65
 
     def __init__(self, app_settings: Any, gate: CallGate | None = None) -> None:
         from google import genai
@@ -87,7 +85,7 @@ class GeminiEmbedder:
         self.name = app_settings.embedding_model
         self._dimensions = app_settings.embedding_dimensions
         self._batch_size = app_settings.embedding_batch_size
-        self._client = genai.Client(api_key=app_settings.gemini_api_key)
+        self._client = create_genai_client(genai.Client, app_settings.gemini_api_key)
         self._gate = gate or CallGate.from_settings(app_settings)
 
     @property

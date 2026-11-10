@@ -25,7 +25,7 @@ from .models import (
     YargiDecision,
 )
 from .rewrites import template_rewrite
-from .segmentation import segment_clauses as rule_based_segment_clauses
+from .segmentation import PREAMBLE_ID, segment_clauses as rule_based_segment_clauses
 from .text_utils import searchable
 
 
@@ -55,21 +55,63 @@ class _Rule:
 
 
 _COURT_RE = re.compile(r"([A-ZÇĞİÖŞÜ][A-ZÇĞİÖŞÜa-zçğıöşü]+)\s+(?:mahkemeleri|MAHKEMELERİ|MAHKEMELERI|Mahkemeleri)")
+_COURT_TOKEN_RE = re.compile(r"\b([a-z]{3,})\s+mahkemeleri\b")
+_GENERIC_COURT_WORDS = frozenset(
+    {
+        "yetkili",
+        "bulundugu",
+        "yer",
+        "ilgili",
+        "gorevli",
+        "genel",
+        "ticaret",
+        "hukuk",
+        "sulh",
+        "asliye",
+        "ceza",
+        "icra",
+        "turk",
+        "turkiye",
+        "cumhuriyeti",
+    }
+)
+
+
+def _has_named_court(own: str) -> bool:
+    return any(match.group(1) not in _GENERIC_COURT_WORDS for match in _COURT_TOKEN_RE.finditer(own))
+
+
+def _capitalize_tr(word: str, turkish: bool) -> str:
+    if not word:
+        return word
+    if turkish:
+        first = {"i": "İ", "ı": "I"}.get(word[0], word[0].upper())
+        rest = word[1:].replace("I", "ı").replace("İ", "i").lower()
+        return first + rest
+    return word[:1].upper() + word[1:].lower()
 
 
 def _jurisdiction_explanation(clause_text: str) -> str:
     """States only what the clause shows: the chosen courts, not where the property is."""
-    # Diacritic-free text (common in PDFs) has no reliable dotted/dotless i.
     turkish = any(char in clause_text for char in "çğıöşüÇĞİÖŞÜ")
     courts: list[str] = []
     for match in _COURT_RE.finditer(clause_text):
         court = match.group(1)
-        if court.isupper():  # "İZMİR" -> "İzmir"
-            rest = court[1:].replace("I", "ı").replace("İ", "i") if turkish else court[1:]
-            court = court[:1] + rest.lower()
+        if searchable(court) in _GENERIC_COURT_WORDS:
+            continue
+        if court.isupper():
+            court = _capitalize_tr(court, turkish)
         if court not in courts:
             courts.append(court)
-    named = " ve ".join(courts) or "Ankara"
+    if not courts:
+        for match in _COURT_TOKEN_RE.finditer(searchable(clause_text)):
+            token = match.group(1)
+            if token in _GENERIC_COURT_WORDS:
+                continue
+            label = _capitalize_tr(token, False)
+            if label not in courts:
+                courts.append(label)
+    named = " ve ".join(courts) or "seçilen"
     return (
         f"Yetki maddesi {named} mahkemelerini yetkili kılıyor. Taşınmazın bulunduğu yer veya "
         "davalının yerleşim yeri başka bir yerdeyse, bu seçim kesin yetki kuralları nedeniyle "
@@ -153,8 +195,8 @@ _RULES: tuple[_Rule, ...] = (
     ),
     _Rule(
         "jurisdiction",
-        lambda own: "ankara mahkemeleri" in own,
-        lambda ctx, whole, ct: "istanbul" in whole or ct == "lease",
+        _has_named_court,
+        lambda ctx, whole, ct: True,
         "medium",
         "Yetki maddesi Ankara mahkemelerini yetkili kılıyor; taşınmazın bulunduğu yer başka bir yerdeyse yetki itirazı riski doğabilir.",
         "Yetki maddesini taşınmazın bulunduğu yer ve zorunlu yetki kuralları açısından kontrol edin.",
@@ -194,6 +236,8 @@ class FakeContractAnalyzer(WarningCollector):
             if rule.category in seen:
                 continue
             for index, clause in enumerate(clauses):
+                if clause.id == PREAMBLE_ID:
+                    continue
                 own = own_texts[index]
                 context = " ".join(own_texts[max(0, index - 1) : index + 2])
                 if rule.anchor(own) and rule.support(context, whole, contract_type):

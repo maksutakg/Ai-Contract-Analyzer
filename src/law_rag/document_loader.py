@@ -134,12 +134,16 @@ def inspect_document(
     try:
         if file_type == "pdf":
             pages = extract_pdf_pages(data)
-            text = normalize_text("\n".join(pages))
-            reason = "thin_text_layer" if is_thin_text_layer(pages, min_chars_per_page) else None
-            return LoadedDocument("pdf", text, max(1, len(pages)), reason)
-        text = normalize_text(extract_docx_text(data))
+        else:
+            text = normalize_text(extract_docx_text(data))
     except Exception as exc:
         raise DocumentLoadError("unreadable_file", "Could not read the uploaded file.") from exc
+    if file_type == "pdf":
+        if not pages:
+            raise DocumentLoadError("empty_text", "No readable text was found in the uploaded file.")
+        text = normalize_text("\n".join(pages))
+        reason = "thin_text_layer" if is_thin_text_layer(pages, min_chars_per_page) else None
+        return LoadedDocument("pdf", text, len(pages), reason)
     if not text:
         raise DocumentLoadError("empty_text", "No readable text was found in the uploaded file.")
     return LoadedDocument("docx", text)

@@ -19,7 +19,7 @@ import zlib
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from .call_gate import CallGate
+from .call_gate import CallGate, create_genai_client
 from .document_loader import DocumentLoadError, LoadedDocument, normalize_text
 from .models import OcrInfo
 
@@ -98,7 +98,7 @@ class GeminiOcrEngine:
         if not app_settings.gemini_api_key:
             raise ValueError("GEMINI_API_KEY is required for GeminiOcrEngine.")
         self.model = app_settings.ocr_model or app_settings.gemini_model
-        self._client = genai.Client(api_key=app_settings.gemini_api_key)
+        self._client = create_genai_client(genai.Client, app_settings.gemini_api_key)
         self._gate = gate or CallGate.from_settings(app_settings)
 
     async def transcribe_page(self, page: PageImage) -> str:
@@ -214,6 +214,8 @@ async def transcribe_document(
         raise DocumentLoadError("ocr_failed", "OCR failed for every page of the file.", 502)
     text = normalize_text("\n".join(texts))
     if not text or all(not t or t.startswith("[Sayfa ") for t in texts):
+        if failed:
+            raise DocumentLoadError("ocr_failed", "OCR failed for every readable page of the file.", 502)
         raise DocumentLoadError("empty_text", "No readable text was found in the uploaded file.")
 
     limitations = [OCR_USED_LIMITATION.format(pages=len(pages))]

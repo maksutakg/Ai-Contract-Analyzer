@@ -79,3 +79,52 @@ def split_text_by_budget(text: str, budget: int) -> list[str]:
     if current:
         chunks.append("\n".join(current))
     return [chunk for chunk in chunks if chunk.strip()]
+
+
+_LAW_CITATION_RE = re.compile(
+    r"\b(?:TBK|TTK|HMK|TMK|İİK|IIK|İK|KVKK|FSEK|BK)\b\.?\s*(?:m\.?|md\.?|madde(?:si)?)?\s*\d+(?:/\d+)?"
+    r"|\b\d{3,5}\s+say[ıi]l[ıi]"
+    r"|\bm(?:d)?\.\s*\d+(?:/\d+)?"
+    r"|kanun\w*(?:['’]?(?:n?[ıiuü]n|un|in|de|da|a|e))?\s+(?:m\.?|md\.?)?\s*\d+(?:/\d+)?(?:\s*\.\s*madde\w*)?",
+    re.IGNORECASE,
+)
+_CLAUSE_REF_RE = re.compile(
+    r"\bmadde\s+\d+(?:/\d+)?"
+    r"|\b\d+(?:/\d+)?\s*\.\s*madde\w*",
+    re.IGNORECASE,
+)
+STATUTE_RE = re.compile(f"{_LAW_CITATION_RE.pattern}|{_CLAUSE_REF_RE.pattern}", re.IGNORECASE)
+
+
+def _match_numbers(pattern: re.Pattern[str], text: str) -> set[str]:
+    numbers: set[str] = set()
+    for match in pattern.finditer(text or ""):
+        numbers.update(re.findall(r"\d+", match.group(0)))
+    return numbers
+
+
+def extract_statute_numbers(text: str) -> tuple[set[str], set[str]]:
+    law_nums = _match_numbers(_LAW_CITATION_RE, text)
+    clause_nums = _match_numbers(_CLAUSE_REF_RE, text) | law_nums
+    return law_nums, clause_nums
+
+
+def unsupported_statutes(text: str, law_nums: set[str], clause_nums: set[str]) -> list[str]:
+    bad: list[str] = []
+    for match in STATUTE_RE.finditer(text or ""):
+        token = match.group(0)
+        allowed = law_nums if _LAW_CITATION_RE.fullmatch(token) else clause_nums
+        if any(num not in allowed for num in re.findall(r"\d+", token)):
+            bad.append(token)
+    return bad
+
+
+def strip_unsupported_statutes(text: str, law_nums: set[str], clause_nums: set[str]) -> str:
+    def replace(match: re.Match[str]) -> str:
+        token = match.group(0)
+        allowed = law_nums if _LAW_CITATION_RE.fullmatch(token) else clause_nums
+        if all(num in allowed for num in re.findall(r"\d+", token)):
+            return token
+        return "ilgili kanun hükmü"
+
+    return STATUTE_RE.sub(replace, text or "")

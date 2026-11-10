@@ -1,0 +1,234 @@
+{
+  "version": "1.0",
+  "contracts": [
+    {
+      "contract_id": "lease-001",
+      "contract_type": "lease",
+      "party": "tenant",
+      "expected_risk_level": "high",
+      "raw_text": "KONUT KİRA SÖZLEŞMESİ\nTaşınmaz Adresi: Kadıköy / İstanbul.\nMADDE 1 - KİRA BEDELİ VE ÖDEME\nAylık kira bedeli 20.000 TL olup her ayın beşinde kiraya verene elden nakit olarak ödenir.\nMADDE 2 - GÜVENCE BEDELİ\nKiracı sözleşme imzasında 5 aylık kira tutarı olan 100.000 TL depozito öder; depozito hiçbir şartta iade edilmez.\nMADDE 3 - KİRA ARTIŞI\nYenilenen kira dönemlerinde kira bedeli yıllık %100 oranında artırılır.\nMADDE 4 - KONUTUN GÖSTERİLMESİ\nKiraya veren dilediği zaman kiracının izni olmaksızın kiralanan konuta girebilir.\nMADDE 5 - YETKİ\nİşbu sözleşmeden doğan uyuşmazlıklarda Ankara mahkemeleri yetkilidir.",
+      "expected_findings": [
+        {
+          "clause_id": "clause-1",
+          "category": "cash_payment",
+          "disadvantaged_party": "tenant"
+        },
+        {
+          "clause_id": "clause-2",
+          "category": "deposit_forfeiture",
+          "severity": "high",
+          "disadvantaged_party": "both",
+          "statutory": true
+        },
+        {
+          "clause_id": "clause-3",
+          "category": "rent_increase",
+          "disadvantaged_party": "tenant"
+        },
+        {
+          "clause_id": "clause-4",
+          "category": "unlawful_entry",
+          "severity": "critical",
+          "disadvantaged_party": "tenant"
+        },
+        {
+          "clause_id": "clause-5",
+          "category": "jurisdiction",
+          "disadvantaged_party": "both"
+        }
+      ],
+      "expected_missing_topics": ["term", "maintenance_repairs", "utilities", "subletting", "handover"],
+      "decision_examples": [
+        {
+          "finding_category": "deposit_forfeiture",
+          "finding_explanation": "Güvence bedeli 3 aylık kirayı aşıyor ve iade edilmiyor.",
+          "decision_title": "Yargıtay 3. HD Depozito İadesi Kararı",
+          "decision_excerpt": "6098 sayılı TBK m.342 gereğince güvence bedeli üç aylık kira bedelini aşamaz ve iade edilmez kaydı geçersizdir.",
+          "expected_grade": "relevant"
+        },
+        {
+          "finding_category": "unlawful_entry",
+          "finding_explanation": "Kiracının izni olmadan konuta giriş hakkı tanınıyor.",
+          "decision_title": "Trafo ve Elektrik Sayacı Uyuşmazlığı",
+          "decision_excerpt": "Abonelik sözleşmesi kapsamında elektrik tüketim bedeli itirazı incelenmiştir.",
+          "expected_grade": "irrelevant"
+        }
+      ],
+      "chat_questions": [
+        {
+          "question": "Aylık kira bedeli ne kadar ve nasıl ödenir?",
+          "covered": true,
+          "relevant_chunk_ids": ["clause-1", "finding-1"]
+        },
+        {
+          "question": "Depozito sınırı ihlal ediliyor mu?",
+          "covered": true,
+          "relevant_chunk_ids": ["clause-2", "check-lease_deposit_cap"]
+        },
+        {
+          "question": "Kiraya veren iznim olmadan eve girebilir mi?",
+          "covered": true,
+          "relevant_chunk_ids": ["clause-4"]
+        },
+        {
+          "question": "Sözleşmede evcil hayvan besleme yasağı var mı?",
+          "covered": false,
+          "relevant_chunk_ids": []
+        }
+      ]
+    },
+    {
+      "contract_id": "service-001",
+      "contract_type": "service",
+      "party": "client",
+      "expected_risk_level": "high",
+      "raw_text": "YAZILIM VE DANIŞMANLIK HİZMET SÖZLEŞMESİ\nMADDE 1 - KONU VE KAPSAM\nYüklenici yazılım geliştirme hizmeti sunar; teslimatlar Ek-1'de yer alır.\nMADDE 2 - BEDEL VE GECİKME FAİZİ\nHizmet bedeli 200.000 TL + KDV olup gecikme hâlinde aylık %5 temerrüt faizi uygulanır.\nMADDE 3 - FİKRİ MÜLKİYET\nÜretilen yazılımın tüm fikri mülkiyet hakları yüklenicide kalır, müşteriye yalnızca sınırlı kullanım hakkı tanınır.\nMADDE 4 - SORUMLULUK VE CEZAİ ŞART\nYüklenicinin tüm sorumluluğu 1.000 TL ile sınırlıdır; müşterinin erken çıkışında bedelin tamamı cezai şart olarak ödenir.\nMADDE 5 - FESİH VE KİŞİSEL VERİLER\nYüklenici sözleşmeyi derhal tek taraflı feshedebilir; işlenen kişisel veriler yönünden veri işleyen yükümlülüğü kabul edilmez.",
+      "expected_findings": [
+        {
+          "clause_id": "clause-2",
+          "category": "payment_interest",
+          "disadvantaged_party": "client"
+        },
+        {
+          "clause_id": "clause-3",
+          "category": "intellectual_property",
+          "disadvantaged_party": "client"
+        },
+        {
+          "clause_id": "clause-4",
+          "category": "liability",
+          "disadvantaged_party": "client"
+        },
+        {
+          "clause_id": "clause-4",
+          "category": "penalty_clause",
+          "disadvantaged_party": "both"
+        },
+        {
+          "clause_id": "clause-5",
+          "category": "termination",
+          "disadvantaged_party": "both"
+        },
+        {
+          "clause_id": "clause-5",
+          "category": "data_protection",
+          "disadvantaged_party": "client"
+        }
+      ],
+      "expected_missing_topics": ["term", "confidentiality", "force_majeure", "dispute_resolution"],
+      "decision_examples": [
+        {
+          "finding_category": "data_protection",
+          "finding_explanation": "Veri işleyen yükümlülüğü sözleşmeyle reddediliyor.",
+          "decision_title": "KVKK Kurul Kararı - Veri İşleyen Sorumluluğu",
+          "decision_excerpt": "6698 sayılı Kanun kapsamında veri sorumlusu ve veri işleyen kişisel veri güvenliğinden müştereken sorumludur.",
+          "expected_grade": "relevant"
+        },
+        {
+          "finding_category": "intellectual_property",
+          "finding_explanation": "Yazılım hak devri sınırlı tutulmuş.",
+          "decision_title": "Genel Hizmet Sözleşmesi Bedel İadesi",
+          "decision_excerpt": "Taraflar arasındaki yazılım eser sözleşmesinde bakiye fatura alacağı tartışılmıştır.",
+          "expected_grade": "ambiguous"
+        }
+      ],
+      "chat_questions": [
+        {
+          "question": "Gecikme faizi oranı nedir?",
+          "covered": true,
+          "relevant_chunk_ids": ["clause-2"]
+        },
+        {
+          "question": "Yazılımın fikri mülkiyet hakları kime ait?",
+          "covered": true,
+          "relevant_chunk_ids": ["clause-3"]
+        },
+        {
+          "question": "Kişisel verilerle ilgili sözleşmede ne yazıyor?",
+          "covered": true,
+          "relevant_chunk_ids": ["clause-5"]
+        },
+        {
+          "question": "Yıllık izin süresi kaç gün belirlenmiş?",
+          "covered": false,
+          "relevant_chunk_ids": []
+        }
+      ]
+    },
+    {
+      "contract_id": "employment-001",
+      "contract_type": "employment",
+      "party": "employee",
+      "expected_risk_level": "high",
+      "raw_text": "BELİRSİZ SÜRELİ İŞ SÖZLEŞMESİ\nMADDE 1 - GÖREV VE ÜCRET\nİşçi yazılım uzmanı olarak aylık brüt 60.000 TL ücretle çalışır.\nMADDE 2 - DENEME SÜRESİ\nTaraflar arasında deneme süresi 4 ay olarak kararlaştırılmıştır.\nMADDE 3 - BİLDİRİM SÜRESİ VE FESİH\nSözleşmenin feshinde ihbar süresi 1 hafta uygulanır; işveren sözleşmeyi tek taraflı derhal feshedebilir.\nMADDE 4 - REKABET YASAĞI VE CEZAİ ŞART\nİşçi işten ayrıldıktan sonra 3 yıl boyunca rakip firmalarda çalışamaz; aksi hâlde 500.000 TL cezai şart öder.",
+      "expected_findings": [
+        {
+          "clause_id": "clause-2",
+          "category": "probation_period",
+          "severity": "medium",
+          "disadvantaged_party": "both",
+          "statutory": true
+        },
+        {
+          "clause_id": "clause-3",
+          "category": "termination",
+          "severity": "medium",
+          "disadvantaged_party": "both",
+          "statutory": true
+        },
+        {
+          "clause_id": "clause-4",
+          "category": "non_compete",
+          "severity": "high",
+          "disadvantaged_party": "both",
+          "statutory": true
+        },
+        {
+          "clause_id": "clause-4",
+          "category": "penalty_clause",
+          "disadvantaged_party": "employee"
+        }
+      ],
+      "expected_missing_topics": ["working_hours", "workplace", "annual_leave", "confidentiality", "personal_data"],
+      "decision_examples": [
+        {
+          "finding_category": "non_compete",
+          "finding_explanation": "Rekabet yasağı süresi 3 yıl belirlenmiş.",
+          "decision_title": "Yargıtay 9. HD Rekabet Yasağı Süresi",
+          "decision_excerpt": "TBK m.445 gereğince rekabet yasağı iki yılı aşamaz; aşan süre hakim tarafından iki yılla sınırlandırılır.",
+          "expected_grade": "relevant"
+        },
+        {
+          "finding_category": "probation_period",
+          "finding_explanation": "Deneme süresi 4 ay olarak belirlenmiştir.",
+          "decision_title": "Kira Bedelinin Uyarlanması Kararı",
+          "decision_excerpt": "Taşınmaz kira bedelinin rayiç değere uyarlanması talebi reddedilmiştir.",
+          "expected_grade": "irrelevant"
+        }
+      ],
+      "chat_questions": [
+        {
+          "question": "Deneme süresi kanuni sınırı aşıyor mu?",
+          "covered": true,
+          "relevant_chunk_ids": ["clause-2", "check-employment_probation_cap"]
+        },
+        {
+          "question": "İşten ayrıldıktan sonraki rekabet yasağı süresi kaç yıl?",
+          "covered": true,
+          "relevant_chunk_ids": ["clause-4", "check-employment_non_compete_cap"]
+        },
+        {
+          "question": "Sözleşmede ihbar süresi kaç hafta yazılmış?",
+          "covered": true,
+          "relevant_chunk_ids": ["clause-3", "check-employment_notice_minimum"]
+        },
+        {
+          "question": "İşyerinde servis veya yol ücreti sağlanıyor mu?",
+          "covered": false,
+          "relevant_chunk_ids": []
+        }
+      ]
+    }
+  ]
+}
+

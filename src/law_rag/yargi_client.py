@@ -49,70 +49,94 @@ class RemoteYargiMcpClient:
         self._initialized = False
         self._request_id = 0
         self._tools: set[str] = set()
+        self._http: httpx.AsyncClient | None = None
+
+    def _client(self) -> httpx.AsyncClient:
+        if self._http is None:
+            self._http = httpx.AsyncClient(
+                timeout=self._settings.yargi_request_timeout_seconds,
+                follow_redirects=True,
+            )
+        return self._http
+
+    async def aclose(self) -> None:
+        if self._http is not None:
+            await self._http.aclose()
+            self._http = None
 
     async def search(self, query: str, category: str | None = None) -> list[YargiDecision]:
-        async with httpx.AsyncClient(
-            timeout=self._settings.yargi_request_timeout_seconds,
-            follow_redirects=True,
-        ) as client:
-            await self._ensure_initialized(client)
+        client = self._client()
+        await self._ensure_initialized(client)
 
-            if category == "data_protection" and "search_kvkk_decisions" in self._tools:
-                kvkk_result = await self._call_tool(
+        if category == "data_protection" and "search_kvkk_decisions" in self._tools:
+            kvkk_result = await self._call_tool(
+                client,
+                "search_kvkk_decisions",
+                {"keywords": query, "page": 1},
+            )
+            decisions = await self._decisions_from_kvkk_result(query, kvkk_result)
+            if decisions:
+                return decisions
+
+        decisions = await self._search_bedesten(
+            client,
+            query,
+            ["YARGITAYKARARI", "DANISTAYKARAR"],
+        )
+        if decisions:
+            return decisions
+
+        decisions = await self._search_bedesten(
+            client,
+            query,
+            ["YARGITAYKARARI", "DANISTAYKARAR", "ISTINAFHUKUK", "YERELHUKUK"],
+        )
+        if decisions:
+            return decisions
+
+        if "search_emsal_detailed_decisions" in self._tools:
+            try:
+                emsal_result = await self._call_tool(
                     client,
-                    "search_kvkk_decisions",
-                    {"keywords": query, "page": 1},
+                    "search_emsal_detailed_decisions",
+                    {"keyword": query, "page_number": 1},
                 )
-                decisions = await self._decisions_from_kvkk_result(query, kvkk_result)
-                if decisions:
-                    return decisions
+                return await self._decisions_from_emsal_result(client, query, emsal_result)
+            except Exception:
+                return []
 
-            decisions = await self._search_bedesten(
-                client,
-                query,
-                ["YARGITAYKARARI", "DANISTAYKARAR"],
-            )
-            if decisions:
-                return decisions
-
-            decisions = await self._search_bedesten(
-                client,
-                query,
-                ["YARGITAYKARARI", "DANISTAYKARAR", "ISTINAFHUKUK", "YERELHUKUK"],
-            )
-            if decisions:
-                return decisions
-
-            if "search_emsal_detailed_decisions" in self._tools:
-                try:
-                    emsal_result = await self._call_tool(
-                        client,
-                        "search_emsal_detailed_decisions",
-                        {"keyword": query, "page_number": 1},
-                    )
-                    return await self._decisions_from_emsal_result(client, query, emsal_result)
-                except Exception:
-                    return []
-
-            return []
+        return []
 
     async def fetch_decision_text(self, decision: YargiDecision) -> str | None:
-        async with httpx.AsyncClient(
-            timeout=self._settings.yargi_request_timeout_seconds,
-            follow_redirects=True,
-        ) as client:
-            await self._ensure_initialized(client)
-            if "KVKK" in decision.source and decision.url:
-                return await self._fetch_kvkk_document(client, decision.url)
-            if "Bedesten" in decision.source:
-                document_id = self._document_id_from_decision(decision)
-                if document_id:
-                    return await self._fetch_bedesten_document(client, document_id)
-            if "Emsal" in decision.source:
-                document_id = self._document_id_from_decision(decision)
-                if document_id:
-                    return await self._fetch_emsal_document(client, document_id)
+        client = self._client()
+        await self._ensure_initialized(client)
+        if "KVKK" in decision.source and decision.url:
+            if "get_kvkk_document_markdown" not in self._tools:
+                return None
+            return await self._fetch_markdown(
+                client, "get_kvkk_document_markdown", {"decision_url": decision.url, "page_number": 1}
+            )
+        document_id = self._document_id_from_decision(decision)
+        if not document_id:
+            return None
+        if "Bedesten" in decision.source:
+            return await self._fetch_markdown(
+                client, "get_bedesten_document_markdown", {"documentId": document_id}
+            )
+        if "Emsal" in decision.source and "get_emsal_document_markdown" in self._tools:
+            return await self._fetch_markdown(
+                client, "get_emsal_document_markdown", {"id": document_id}
+            )
         return None
+
+    def _bedesten_phrase(self, query: str) -> str:
+        cleaned = query.strip()
+        terms = re.findall(r'"[^"]+"|\S+', cleaned)
+        if len(terms) <= 1:
+            return cleaned
+        if any(term in ("AND", "OR", "NOT") or term.startswith(("+", "-")) for term in terms):
+            return cleaned
+        return " AND ".join(terms)
 
     async def _search_bedesten(
         self,
@@ -124,12 +148,14 @@ class RemoteYargiMcpClient:
             client,
             "search_bedesten_unified",
             {
-                "phrase": query,
+                "phrase": self._bedesten_phrase(query),
                 "court_types": court_types,
                 "pageNumber": 1,
                 "birimAdi": "ALL",
             },
         )
+        if isinstance(result, dict) and result.get("error") == "rate_limit_exceeded":
+            raise YargiMcpError("Bedesten rate limit exceeded.")
         return await self._decisions_from_bedesten_result(client, query, result)
 
     async def _ensure_initialized(self, client: httpx.AsyncClient) -> None:
@@ -330,17 +356,14 @@ class RemoteYargiMcpClient:
             )
         return decisions
 
-    async def _fetch_bedesten_document(
+    async def _fetch_markdown(
         self,
         client: httpx.AsyncClient,
-        document_id: str,
+        tool_name: str,
+        arguments: dict[str, Any],
     ) -> str | None:
         try:
-            payload = await self._call_tool(
-                client,
-                "get_bedesten_document_markdown",
-                {"documentId": document_id},
-            )
+            payload = await self._call_tool(client, tool_name, arguments)
         except Exception:
             return None
         if isinstance(payload, dict):
@@ -385,50 +408,6 @@ class RemoteYargiMcpClient:
                 )
             )
         return decisions
-
-    async def _fetch_kvkk_document(
-        self,
-        client: httpx.AsyncClient,
-        decision_url: str,
-    ) -> str | None:
-        if "get_kvkk_document_markdown" not in self._tools:
-            return None
-        try:
-            payload = await self._call_tool(
-                client,
-                "get_kvkk_document_markdown",
-                {"decision_url": decision_url, "page_number": 1},
-            )
-        except Exception:
-            return None
-        if isinstance(payload, dict):
-            text = self._first_value(payload, "markdown_content", "content", "text")
-            return self._clean_document_text(text)
-        if isinstance(payload, str):
-            return self._clean_document_text(payload)
-        return None
-
-    async def _fetch_emsal_document(
-        self,
-        client: httpx.AsyncClient,
-        document_id: str,
-    ) -> str | None:
-        if "get_emsal_document_markdown" not in self._tools:
-            return None
-        try:
-            payload = await self._call_tool(
-                client,
-                "get_emsal_document_markdown",
-                {"id": document_id},
-            )
-        except Exception:
-            return None
-        if isinstance(payload, dict):
-            text = self._first_value(payload, "markdown_content", "content", "text")
-            return self._clean_document_text(text)
-        if isinstance(payload, str):
-            return self._clean_document_text(payload)
-        return None
 
     def _decision_title(self, item: dict[str, Any], fallback: str) -> str:
         direct_title = self._first_value(item, "title", "baslik", "daire", "birimAdi")

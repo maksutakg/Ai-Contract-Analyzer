@@ -18,9 +18,15 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from .call_gate import CallGate
+from .call_gate import CallGate, create_genai_client
 from .chat_index import Chunk
-from .text_utils import searchable
+from .text_utils import (
+    STATUTE_RE as _STATUTE_RE,
+    extract_statute_numbers,
+    searchable,
+    strip_unsupported_statutes,
+    unsupported_statutes,
+)
 
 DISCLAIMER = (
     "Bu yanıt, yüklenen sözleşmenin ve otomatik analiz sonuçlarının içeriğine dayanır; "
@@ -43,14 +49,6 @@ NOT_COVERED_MARKER = "KAPSAM_DIŞI"
 _SNIPPET_CHARS = 240
 _HISTORY_ANSWER_CHARS = 400
 _CITATION_RE = re.compile(r"\[([A-Za-z0-9_.\-]+(?:\s*,\s*[A-Za-z0-9_.\-]+)*)\]")
-_STATUTE_RE = re.compile(
-    r"\b(?:TBK|TTK|HMK|TMK|İİK|IIK|İK|KVKK|FSEK|BK)\b\.?\s*(?:m\.?|md\.?|madde(?:si)?)?\s*\d+(?:/\d+)?"
-    r"|\b\d{3,5}\s+say[ıi]l[ıi]"
-    r"|\bm(?:d)?\.\s*\d+(?:/\d+)?"
-    r"|\bmadde\s+\d+(?:/\d+)?"
-    r"|\b\d+(?:/\d+)?\s*\.\s*madde\w*",
-    re.IGNORECASE,
-)
 
 
 @dataclass
@@ -117,25 +115,20 @@ def strip_unknown_citations(text: str, allowed: set[str]) -> tuple[str, list[str
     return re.sub(r"[ \t]{2,}", " ", cleaned).strip(), kept
 
 
-def allowed_numbers(chunks: list[Chunk]) -> set[str]:
-    return set(re.findall(r"\d+", " ".join(f"{chunk.title or ''} {chunk.text}" for chunk in chunks)))
+def allowed_numbers(chunks: list[Chunk]) -> tuple[set[str], set[str]]:
+    return extract_statute_numbers(" ".join(f"{chunk.title or ''} {chunk.text}" for chunk in chunks))
 
 
-def unsupported_references(text: str, numbers: set[str]) -> list[str]:
-    return [
-        match.group(0)
-        for match in _STATUTE_RE.finditer(text)
-        if any(number not in numbers for number in re.findall(r"\d+", match.group(0)))
-    ]
+def unsupported_references(text: str, numbers: tuple[set[str], set[str]] | set[str]) -> list[str]:
+    if isinstance(numbers, tuple):
+        return unsupported_statutes(text, numbers[0], numbers[1])
+    return unsupported_statutes(text, numbers, numbers)
 
 
-def strip_references(text: str, numbers: set[str]) -> str:
-    def replace(match: re.Match) -> str:
-        if all(number in numbers for number in re.findall(r"\d+", match.group(0))):
-            return match.group(0)
-        return "ilgili kanun hükmü"
-
-    return _STATUTE_RE.sub(replace, text)
+def strip_references(text: str, numbers: tuple[set[str], set[str]] | set[str]) -> str:
+    if isinstance(numbers, tuple):
+        return strip_unsupported_statutes(text, numbers[0], numbers[1])
+    return strip_unsupported_statutes(text, numbers, numbers)
 
 
 def is_not_covered(text: str) -> bool:
@@ -187,7 +180,7 @@ class GeminiChatAnswerer:
         if not app_settings.gemini_api_key:
             raise ValueError("GEMINI_API_KEY is required for GeminiChatAnswerer.")
         self._model = app_settings.gemini_model
-        self._client = genai.Client(api_key=app_settings.gemini_api_key)
+        self._client = create_genai_client(genai.Client, app_settings.gemini_api_key)
         self._gate = gate or CallGate.from_settings(app_settings)
 
     async def _generate(self, prompt: str) -> str:

@@ -38,3 +38,16 @@ class CallGate:
                         await asyncio.sleep(wait)
                     self._last_start = time.monotonic()
             return await call()
+
+
+def create_genai_client(client_factory: Any, api_key: str, timeout_seconds: float = 45.0) -> Any:
+    from google.genai import types
+
+    options = types.HttpOptions(
+        timeout=int(timeout_seconds * 1000),
+        retry_options=types.HttpRetryOptions(attempts=1),
+    )
+    try:
+        return client_factory(api_key=api_key, http_options=options)
+    except TypeError:
+        return client_factory(api_key=api_key)

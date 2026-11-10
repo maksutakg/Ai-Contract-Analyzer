@@ -44,7 +44,7 @@ ChunkType = Literal["clause", "finding", "statutory_check", "missing_clause", "r
 RetrievalMode = Literal["hybrid", "dense", "lexical"]
 
 RRF_K = 60
-LEXICAL_MIN_SCORE = 1.0
+LEXICAL_MIN_SCORE = 0.5
 # Heuristic gates, set by probing a handful of questions offline; to be tuned
 # with the evaluation harness (retrieve(..., apply_threshold=False) exposes the raw scores).
 LEXICAL_MIN_COVERAGE = 0.35

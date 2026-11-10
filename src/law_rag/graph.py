@@ -221,6 +221,7 @@ def build_contract_graph(
         use_llm = app_settings.crag_use_llm_grader
         fetch_budget = app_settings.crag_max_fetches_per_round
         limitations: list[str] = []
+        pending_by_finding: list[tuple[RiskFinding, FindingRetrievalTrace, RetrievalAttempt, list[YargiDecision]]] = []
         for finding in state.findings:
             trace = retrieval.get(finding.id)
             if trace is None or trace.status != "retrieved":
@@ -231,9 +232,19 @@ def build_contract_graph(
                 for decision in candidates.get(finding.id, [])
                 if decision.attempt == attempt.attempt and decision.grade is None
             ]
-            fetch_budget -= await hydrate_decisions(
-                new, yargi_client, budget=max(0, fetch_budget), cache=text_cache
-            )
+            pending_by_finding.append((finding, trace, attempt, new))
+
+        round_robin: list[YargiDecision] = []
+        max_len = max((len(items[3]) for items in pending_by_finding), default=0)
+        for index in range(max_len):
+            for _, _, _, items in pending_by_finding:
+                if index < len(items):
+                    round_robin.append(items[index])
+        await hydrate_decisions(
+            round_robin, yargi_client, budget=max(0, fetch_budget), cache=text_cache
+        )
+
+        for finding, trace, attempt, new in pending_by_finding:
             if any(not decision.excerpt for decision in new):
                 limitations.append(MISSING_EXCERPT_LIMITATION)
 
