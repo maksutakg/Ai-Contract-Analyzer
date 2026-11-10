@@ -1,5 +1,6 @@
 import json
 import re
+import zlib
 from typing import Any, Protocol
 
 import httpx
@@ -21,13 +22,17 @@ class YargiMcpError(RuntimeError):
 
 
 class FakeYargiClient:
+    """Offline stand-in. The excerpt echoes the query so the keyword grader can
+    judge it like a real result; one stable decision per distinct query."""
+
     async def search(self, query: str, category: str | None = None) -> list[YargiDecision]:
         return [
             YargiDecision(
                 source="Yargi MCP",
                 title="MVP yargi karari",
                 relevance=f"'{query}' sorgusu ile iliskili ornek karar ozeti.",
-                excerpt="Mock excerpt for local MVP development.",
+                excerpt=f"Mock excerpt for local MVP development. Sorgu: {query}",
+                url=f"fake://yargi/{category or 'general'}/{zlib.crc32(query.encode('utf-8'))}",
                 confidence=0.6,
             )
         ]
